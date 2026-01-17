@@ -111,68 +111,81 @@ class CurveFinanceAnalyzer:
             "top_lps": market_shares[:10],
         }
     
-    def analyze_pool(self, pool_address: str) -> None:
-        """Complete pool analysis with formatted output"""
+    def analyze_pool(self, pool_address: str) -> dict:
+        """Complete pool analysis with formatted output. Returns dict with all metrics."""
         print(f"\n{'='*70}")
         print(f"Curve Finance Pool Analysis - {self.network.upper()}")
         print(f"{'='*70}")
         print(f"Pool Address: {pool_address}\n")
-        
+
+        result = {
+            "protocol": "Curve Finance",
+            "network": self.network,
+            "pool_address": pool_address,
+            "status": "error",
+            "error": None
+        }
+
         # Get pool data
         print("Fetching pool data from Curve API...")
         pool_data = self.get_pool_data(pool_address)
-        
+
         if not pool_data:
             print(f"❌ Pool not found on {self.network}")
-            return
-        
+            result["error"] = f"Pool not found on {self.network}"
+            return result
+
         # Display pool info
         pool_name = pool_data.get("name", "Unknown")
         coins = pool_data.get("coins", [])
         tvl = float(pool_data.get("usdTotal", 0))
-        
+
+        result["pool_name"] = pool_name
+        result["tvl_usd"] = tvl
+
         print(f"\n📊 POOL INFO")
         print(f"{'─'*70}")
         print(f"Pool: {pool_name}")
-        
+
         # Token symbols
         token_symbols = [coin.get("symbol", "?") for coin in coins]
+        result["pair"] = "/".join(token_symbols)
         print(f"Pair: {'/'.join(token_symbols)}")
         print(f"TVL (USD): ${tvl:,.2f}")
-        
+
         # Token amounts
         print(f"\n💰 TOKEN AMOUNTS")
         print(f"{'─'*70}")
+        token_amounts = []
         for coin in coins:
             symbol = coin.get("symbol", "Unknown")
             balance = float(coin.get("poolBalance", 0))
             decimals = int(coin.get("decimals", 18))
             actual_balance = balance / (10 ** decimals)
+            token_amounts.append({"symbol": symbol, "balance": actual_balance})
             print(f"{symbol}: {actual_balance:,.4f}")
-        
+        result["token_amounts"] = token_amounts
+
         # Get holders
         print(f"\n🔍 Fetching LP token holders from Blockscout...")
         lp_token_address = pool_data.get("lpTokenAddress", pool_address)
+        result["lp_token_address"] = lp_token_address
         holders = self.get_all_holders(lp_token_address)
-        
+
         if not holders:
             print("❌ No holders found")
-            return
-        
+            result["error"] = "No holders found"
+            return result
+
         # Calculate metrics
         print("\n📈 Calculating metrics...")
         metrics = self.calculate_metrics(holders)
-        
+
         if not metrics:
             print("❌ Failed to calculate metrics")
-            return
-        
-        # Display concentration metrics
-        print(f"\n🎯 CONCENTRATION METRICS")
-        print(f"{'─'*70}")
-        print(f"Unique Holders: {metrics['unique_holders']:,}")
-        print(f"HHI (0-10,000): {metrics['hhi']:,.2f}")
-        
+            result["error"] = "Failed to calculate metrics"
+            return result
+
         # HHI interpretation
         if metrics['hhi'] < 1500:
             hhi_label = "Highly Competitive"
@@ -180,36 +193,70 @@ class CurveFinanceAnalyzer:
             hhi_label = "Moderately Competitive"
         else:
             hhi_label = "Highly Concentrated"
+
+        result["concentration_metrics"] = {
+            "unique_holders": metrics['unique_holders'],
+            "hhi": metrics['hhi'],
+            "hhi_category": hhi_label,
+            "top_1_pct": metrics['top_1'],
+            "top_3_pct": metrics['top_3'],
+            "top_5_pct": metrics['top_5'],
+            "top_10_pct": metrics['top_10']
+        }
+
+        result["top_lps"] = [
+            {"address": addr, "share_pct": share}
+            for addr, balance, share in metrics['top_lps']
+        ]
+
+        # Display concentration metrics
+        print(f"\n🎯 CONCENTRATION METRICS")
+        print(f"{'─'*70}")
+        print(f"Unique Holders: {metrics['unique_holders']:,}")
+        print(f"HHI (0-10,000): {metrics['hhi']:,.2f}")
         print(f"HHI Category: {hhi_label}")
-        
+
         print(f"\n📊 LP CONCENTRATION")
         print(f"{'─'*70}")
         print(f"Top 1 LP:   {metrics['top_1']:.2f}%")
         print(f"Top 3 LPs:  {metrics['top_3']:.2f}%")
         print(f"Top 5 LPs:  {metrics['top_5']:.2f}%")
         print(f"Top 10 LPs: {metrics['top_10']:.2f}%")
-        
+
         # Display top LPs
         print(f"\n🏆 TOP 10 LIQUIDITY PROVIDERS")
         print(f"{'─'*70}")
         print(f"{'Rank':<6} {'Address':<44} {'Share %':>10}")
         print(f"{'─'*70}")
-        
+
         for i, (address, balance, share) in enumerate(metrics['top_lps'], 1):
             print(f"{i:<6} {address:<44} {share:>9.2f}%")
-        
+
         print(f"\n{'='*70}\n")
+
+        result["status"] = "success"
+        return result
 
 
 def main():
     """Example usage"""
+    import json
+
     # Configuration
     NETWORK = "ethereum"
     POOL_ADDRESS = "0x839d6bDeDFF886404A6d7a788ef241e4e28F4802"
-    
+
     # Create analyzer and run
     analyzer = CurveFinanceAnalyzer(NETWORK)
-    analyzer.analyze_pool(POOL_ADDRESS)
+    result = analyzer.analyze_pool(POOL_ADDRESS)
+
+    # Print JSON summary
+    print("\n" + "="*70)
+    print("JSON OUTPUT:")
+    print("="*70)
+    print(json.dumps(result, indent=2, default=str))
+
+    return result
 
 
 if __name__ == "__main__":

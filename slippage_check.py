@@ -160,10 +160,11 @@ def cross_verify_slippage(
     trade_sizes_usd: Optional[List[int]] = None,
     sell_token_symbol: str = "SELL",
     buy_token_symbol: str = "BUY"
-):
+) -> Dict:
     """
-    Cross-verify slippage across multiple aggregators
-    
+    Cross-verify slippage across multiple aggregators.
+    Returns dict with all slippage data.
+
     Args:
         chain: "ethereum" or "base"
         sell_token: Address of token to sell
@@ -176,64 +177,103 @@ def cross_verify_slippage(
     """
     if trade_sizes_usd is None:
         trade_sizes_usd = [100_000, 500_000]
-    
+
+    result = {
+        "protocol": "Slippage Cross-Verification",
+        "chain": chain,
+        "sell_token": sell_token,
+        "buy_token": buy_token,
+        "sell_token_symbol": sell_token_symbol,
+        "buy_token_symbol": buy_token_symbol,
+        "sell_token_price_usd": sell_token_price_usd,
+        "status": "success",
+        "trade_sizes": []
+    }
+
     print(f"Slippage Cross-Verification ({chain.upper()})")
     print(f"Pair: {sell_token_symbol} → {buy_token_symbol}")
     print(f"{sell_token_symbol} Price: ${sell_token_price_usd:,.2f}")
     print("=" * 90)
-    
+
     for usd_size in trade_sizes_usd:
         sell_amount = usd_to_atomic_units(usd_size, sell_token_price_usd, sell_token_decimals)
-        
+
+        trade_result = {
+            "size_usd": usd_size,
+            "sell_amount": sell_amount,
+            "aggregator_quotes": {},
+            "best_aggregator": None,
+            "median_slippage": None
+        }
+
         print(f"\nTrade Size: ${usd_size:,}")
         print("-" * 90)
         print("Fetching quotes from all aggregators...")
-        
+
         quotes = fetch_all_quotes(chain, sell_token, buy_token, sell_amount)
-        
+
         # Filter successful quotes
         successful_quotes = {k: v for k, v in quotes.items() if v is not None}
-        
+
         if not successful_quotes:
             print("❌ No successful quotes received")
+            trade_result["error"] = "No successful quotes"
+            result["trade_sizes"].append(trade_result)
             continue
-        
+
         # Find best quote
         best_aggregator = max(successful_quotes, key=successful_quotes.get)
         best_buy_amount = successful_quotes[best_aggregator]
-        
+        trade_result["best_aggregator"] = best_aggregator
+        trade_result["best_buy_amount"] = best_buy_amount
+
         # Calculate slippage for each aggregator
         slippages = []
         print(f"\n{'Aggregator':<12} | {'Buy Amount':>20} | {'Slippage %':>12} | {'Status':>8}")
         print("-" * 90)
-        
+
         for agg in ["CowSwap", "1inch", "0x", "KyberSwap", "Odos"]:
             buy_amount = quotes.get(agg)
-            
+
             if buy_amount is None:
                 print(f"{agg:<12} | {'N/A':>20} | {'N/A':>12} | {'Failed':>8}")
+                trade_result["aggregator_quotes"][agg] = {"status": "failed"}
             else:
                 slippage_pct = ((best_buy_amount - buy_amount) / best_buy_amount) * 100
                 slippages.append(slippage_pct)
-                
+
                 is_best = agg == best_aggregator
                 status = "BEST ⭐" if is_best else "OK"
-                
+
+                trade_result["aggregator_quotes"][agg] = {
+                    "buy_amount": buy_amount,
+                    "slippage_pct": slippage_pct,
+                    "is_best": is_best,
+                    "status": "success"
+                }
+
                 print(f"{agg:<12} | {buy_amount:>20,} | {slippage_pct:>11.4f}% | {status:>8}")
-        
+
         # Calculate median slippage
         if slippages:
             median_slippage = statistics.median(slippages)
+            trade_result["median_slippage"] = median_slippage
+            trade_result["successful_quotes"] = len(successful_quotes)
             print("-" * 90)
             print(f"Median Slippage: {median_slippage:.4f}%")
             print(f"Successful Quotes: {len(successful_quotes)}/5")
-    
+
+        result["trade_sizes"].append(trade_result)
+
     print("=" * 90)
+    return result
 
 
 if __name__ == "__main__":
+    import json
+
     # Example: cbBTC -> USDC on Ethereum
-    cross_verify_slippage(
+    result = cross_verify_slippage(
         chain="ethereum",
         sell_token="0xcbB7C0000aB88B473b1f5aFd9ef808440eed33Bf",  # cbBTC
         buy_token="0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",   # USDC
@@ -243,3 +283,9 @@ if __name__ == "__main__":
         sell_token_symbol="cbBTC",
         buy_token_symbol="USDC"
     )
+
+    # Print JSON summary
+    print("\n" + "="*70)
+    print("JSON OUTPUT:")
+    print("="*70)
+    print(json.dumps(result, indent=2, default=str))

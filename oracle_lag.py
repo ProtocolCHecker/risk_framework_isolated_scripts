@@ -329,9 +329,118 @@ def calculate_lag(chain1_data, chain2_data):
     """Calculate time lag between two oracle updates"""
     if not chain1_data or not chain2_data:
         return None
-    
+
     lag_seconds = abs(chain1_data["updated_at"] - chain2_data["updated_at"])
     return lag_seconds
+
+
+def analyze_oracle_lag(
+    chain1_name: str,
+    oracle1_address: str,
+    chain2_name: str,
+    oracle2_address: str,
+    chain1_rpc: str = None,
+    chain2_rpc: str = None
+) -> dict:
+    """
+    Compare oracle update timestamps between two chains.
+    Returns dict with lag analysis.
+    """
+    result = {
+        "protocol": "Oracle Lag Calculator",
+        "status": "error",
+        "error": None,
+        "chain1": {"name": chain1_name, "oracle": oracle1_address},
+        "chain2": {"name": chain2_name, "oracle": oracle2_address}
+    }
+
+    # Get chain configs
+    chain1_config = get_chain_config(chain1_name, chain1_rpc)
+    chain2_config = get_chain_config(chain2_name, chain2_rpc)
+
+    if not chain1_config or not chain2_config:
+        result["error"] = "Invalid chain configuration"
+        return result
+
+    result["chain1"]["rpc"] = chain1_config["rpc"]
+    result["chain2"]["rpc"] = chain2_config["rpc"]
+
+    print(f"\n{'='*60}")
+    print("ORACLE LAG CALCULATOR")
+    print(f"{'='*60}")
+    print(f"\nChain 1: {chain1_config['name']}")
+    print(f"  Oracle: {oracle1_address}")
+    print(f"\nChain 2: {chain2_config['name']}")
+    print(f"  Oracle: {oracle2_address}")
+
+    # Fetch data from both chains
+    print(f"\n{'─'*60}")
+    print(f"Fetching data from {chain1_config['name']}...")
+    chain1_data = get_oracle_data(chain1_config["rpc"], oracle1_address)
+
+    print(f"Fetching data from {chain2_config['name']}...")
+    chain2_data = get_oracle_data(chain2_config["rpc"], oracle2_address)
+
+    # Store oracle data in result
+    if chain1_data:
+        result["chain1"]["data"] = {
+            "round_id": chain1_data["round_id"],
+            "price": chain1_data["price"] / 10**8,
+            "updated_at": chain1_data["updated_at"],
+            "timestamp": str(chain1_data["timestamp"])
+        }
+        print(f"\n{chain1_config['name']} Oracle:")
+        print(f"  Round ID: {chain1_data['round_id']}")
+        print(f"  Last Update: {chain1_data['timestamp']}")
+        print(f"  Price: {chain1_data['price'] / 10**8:.8f}")
+    else:
+        print(f"\n⚠️  Failed to fetch data from {chain1_config['name']}")
+        result["chain1"]["data"] = None
+
+    if chain2_data:
+        result["chain2"]["data"] = {
+            "round_id": chain2_data["round_id"],
+            "price": chain2_data["price"] / 10**8,
+            "updated_at": chain2_data["updated_at"],
+            "timestamp": str(chain2_data["timestamp"])
+        }
+        print(f"\n{chain2_config['name']} Oracle:")
+        print(f"  Round ID: {chain2_data['round_id']}")
+        print(f"  Last Update: {chain2_data['timestamp']}")
+        print(f"  Price: {chain2_data['price'] / 10**8:.8f}")
+    else:
+        print(f"\n⚠️  Failed to fetch data from {chain2_config['name']}")
+        result["chain2"]["data"] = None
+
+    # Calculate lag
+    lag = calculate_lag(chain1_data, chain2_data)
+    if lag is not None:
+        result["lag_seconds"] = lag
+        result["lag_minutes"] = lag / 60
+
+        if chain1_data["updated_at"] > chain2_data["updated_at"]:
+            result["ahead_chain"] = chain1_config["name"]
+        elif chain1_data["updated_at"] < chain2_data["updated_at"]:
+            result["ahead_chain"] = chain2_config["name"]
+        else:
+            result["ahead_chain"] = "synchronized"
+
+        print("\n" + "=" * 60)
+        print(f"ORACLE LAG: {lag} seconds ({lag/60:.2f} minutes)")
+        print("=" * 60)
+
+        if result["ahead_chain"] == "synchronized":
+            print("✓ Both oracles are synchronized!")
+        else:
+            print(f"✓ {result['ahead_chain']} is ahead by {lag} seconds")
+        print("=" * 60)
+
+        result["status"] = "success"
+    else:
+        print("\n⚠️  Unable to calculate lag due to missing data")
+        result["error"] = "Unable to calculate lag due to missing data"
+
+    return result
 
 
 def main():

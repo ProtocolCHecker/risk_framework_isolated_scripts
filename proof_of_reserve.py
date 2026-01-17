@@ -53,12 +53,12 @@ def get_solana_supply(token_address):
 
 def calculate_reserve_ratio(reserves, total_supply):
     ratio = reserves / total_supply if total_supply > 0 else 0
-    
+
     if ratio >= 1.0:
         score = 95 + min(5, (ratio - 1.0) * 100)
     else:
         score = max(0, 95 - (1.0 - ratio) * 500)
-    
+
     return {
         "reserves": reserves,
         "total_supply": total_supply,
@@ -68,6 +68,92 @@ def calculate_reserve_ratio(reserves, total_supply):
         "is_fully_backed": reserves >= total_supply,
         "score": score
     }
+
+
+def analyze_proof_of_reserve(
+    evm_chains: list = None,
+    solana_token: str = None
+) -> dict:
+    """
+    Analyze proof of reserves across chains.
+
+    Args:
+        evm_chains: List of dicts with keys: name, por (PoR address), token (token address)
+        solana_token: Optional Solana token address
+
+    Returns:
+        dict with reserve analysis
+    """
+    result = {
+        "protocol": "Proof of Reserve",
+        "status": "error",
+        "error": None,
+        "chain_data": [],
+        "reserves": {},
+        "supply": {}
+    }
+
+    if not evm_chains:
+        evm_chains = []
+
+    reserve_values = []
+    total_supply = 0
+
+    # Collect reserves from each PoR feed
+    for chain in evm_chains:
+        chain_result = {"name": chain["name"], "por_address": chain.get("por"), "token_address": chain.get("token")}
+
+        try:
+            w3 = Web3(Web3.HTTPProvider(RPCS[chain["name"]]))
+
+            if chain.get("por"):
+                reserves = get_reserves(w3, chain["por"])
+                reserve_values.append(reserves)
+                chain_result["reserves"] = reserves
+                print(f"\n{chain['name'].upper()} Reserves: {reserves:.8f}")
+
+            if chain.get("token"):
+                supply = get_evm_supply(w3, chain["token"])
+                total_supply += supply
+                chain_result["supply"] = supply
+                print(f"{chain['name'].upper()} Supply: {supply:.8f}")
+
+        except Exception as e:
+            chain_result["error"] = str(e)
+            print(f"Error on {chain['name']}: {e}")
+
+        result["chain_data"].append(chain_result)
+
+    # Add Solana supply
+    if solana_token:
+        try:
+            solana_supply = get_solana_supply(solana_token)
+            total_supply += solana_supply
+            result["supply"]["solana"] = solana_supply
+            print(f"SOLANA Supply: {solana_supply:.8f}")
+        except Exception as e:
+            result["supply"]["solana_error"] = str(e)
+
+    # Take median of reserves
+    median_reserves = np.median(reserve_values) if reserve_values else 0
+    result["reserves"]["median"] = median_reserves
+    result["reserves"]["all_values"] = reserve_values
+    print(f"\nMedian Reserves: {median_reserves:.8f}")
+
+    # Calculate metrics
+    print("\n" + "="*50)
+    metrics = calculate_reserve_ratio(median_reserves, total_supply)
+    result["metrics"] = metrics
+
+    for key, value in metrics.items():
+        if isinstance(value, float):
+            print(f"{key}: {value:.8f}")
+        else:
+            print(f"{key}: {value}")
+
+    result["status"] = "success"
+    return result
+
 
 if __name__ == "__main__":
     evm_chains = []

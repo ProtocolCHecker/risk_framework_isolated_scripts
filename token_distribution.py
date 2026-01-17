@@ -80,32 +80,70 @@ def get_solana_holders(token_address, max_holders=200):
     
     return holders[:max_holders]
 
-def analyze_token(token_address, chain_name, blockscout_url=None):
+def analyze_token(token_address, chain_name, blockscout_url=None) -> dict:
+    """Analyze token distribution. Returns dict with metrics."""
     print(f"\nAnalyzing {chain_name}...", flush=True)
-    
+
+    result = {
+        "chain": chain_name,
+        "token_address": token_address,
+        "status": "error",
+        "error": None
+    }
+
     holders = get_evm_holders(token_address, blockscout_url) if blockscout_url else get_solana_holders(token_address)
-    
+
     if not holders:
         print(f"No data for {chain_name}\n")
-        return
-    
+        result["error"] = "No holder data"
+        return result
+
     holders.sort(key=lambda x: x[1], reverse=True)
     balances = np.array([h[1] for h in holders])
     total = balances.sum()
-    
+
+    gini_coeff = gini(balances)
+    top_10_concentration = balances[:10].sum() / total * 100
+    top_50_concentration = balances[:50].sum() / total * 100
+
+    result["metrics"] = {
+        "holders_analyzed": len(holders),
+        "total_supply": float(total),
+        "gini_coefficient": float(gini_coeff),
+        "top_10_concentration_pct": float(top_10_concentration),
+        "top_50_concentration_pct": float(top_50_concentration)
+    }
+
+    result["top_holders"] = [
+        {"address": addr, "balance": float(bal)}
+        for addr, bal in holders[:10]
+    ]
+
     print(f"\n{'='*60}")
-    print(f"{chain_name} - cbBTC Distribution")
+    print(f"{chain_name} - Token Distribution")
     print(f"{'='*60}")
     print(f"Holders Analyzed: {len(holders)}")
-    print(f"Gini Coefficient: {gini(balances):.4f}")
-    print(f"Top 10 Concentration: {balances[:10].sum() / total * 100:.2f}%")
-    print(f"Top 50 Concentration: {balances[:50].sum() / total * 100:.2f}%")
+    print(f"Gini Coefficient: {gini_coeff:.4f}")
+    print(f"Top 10 Concentration: {top_10_concentration:.2f}%")
+    print(f"Top 50 Concentration: {top_50_concentration:.2f}%")
     print(f"{'='*60}\n")
 
+    result["status"] = "success"
+    return result
+
 if __name__ == "__main__":
+    import json
+
     addr = "0xcbB7C0000aB88B473b1f5aFd9ef808440eed33Bf"
-    
-    analyze_token(addr, "Ethereum", "https://eth.blockscout.com")
-    analyze_token(addr, "Base", "https://base.blockscout.com")
-    analyze_token(addr, "Arbitrum", "https://arbitrum.blockscout.com")
-    analyze_token("cbbtcf3aa214zXHbiAZQwf4122FBYbraNdFqgw4iMij", "Solana")
+
+    all_results = []
+    all_results.append(analyze_token(addr, "Ethereum", "https://eth.blockscout.com"))
+    all_results.append(analyze_token(addr, "Base", "https://base.blockscout.com"))
+    all_results.append(analyze_token(addr, "Arbitrum", "https://arbitrum.blockscout.com"))
+    all_results.append(analyze_token("cbbtcf3aa214zXHbiAZQwf4122FBYbraNdFqgw4iMij", "Solana"))
+
+    # Print JSON summary
+    print("\n" + "="*70)
+    print("JSON OUTPUT:")
+    print("="*70)
+    print(json.dumps(all_results, indent=2, default=str))
