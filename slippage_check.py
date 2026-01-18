@@ -14,11 +14,26 @@ API_KEYS = {
     "0x": "2f6515bf-7bed-4e07-8058-792cdb570d05",
 }
 
+COINGECKO_API = "https://api.coingecko.com/api/v3"
+
 # Chain mappings
 CHAIN_MAP = {
     "ethereum": {"cowswap": "mainnet", "1inch": 1, "0x": 1, "kyber": "ethereum", "odos": 1},
     "base": {"cowswap": "base", "1inch": 8453, "0x": 8453, "kyber": "base", "odos": 8453},
+    "arbitrum": {"cowswap": "arbitrum_one", "1inch": 42161, "0x": 42161, "kyber": "arbitrum", "odos": 42161},
 }
+
+
+def get_token_price(coingecko_id: str) -> float:
+    """Fetch current USD price from CoinGecko"""
+    url = f"{COINGECKO_API}/simple/price"
+    params = {"ids": coingecko_id, "vs_currencies": "usd"}
+    response = requests.get(url, params=params, timeout=10)
+    response.raise_for_status()
+    data = response.json()
+    if coingecko_id not in data:
+        raise ValueError(f"Token '{coingecko_id}' not found on CoinGecko")
+    return data[coingecko_id]["usd"]
 
 
 def usd_to_atomic_units(usd_amount: float, token_price_usd: float, decimals: int) -> int:
@@ -156,7 +171,8 @@ def cross_verify_slippage(
     sell_token: str,
     buy_token: str,
     sell_token_decimals: int,
-    sell_token_price_usd: float,
+    sell_token_price_usd: Optional[float] = None,
+    sell_token_coingecko_id: Optional[str] = None,
     trade_sizes_usd: Optional[List[int]] = None,
     sell_token_symbol: str = "SELL",
     buy_token_symbol: str = "BUY"
@@ -166,15 +182,24 @@ def cross_verify_slippage(
     Returns dict with all slippage data.
 
     Args:
-        chain: "ethereum" or "base"
+        chain: "ethereum", "base", or "arbitrum"
         sell_token: Address of token to sell
         buy_token: Address of token to buy
         sell_token_decimals: Decimals of sell token
-        sell_token_price_usd: Current USD price of sell token
+        sell_token_price_usd: Current USD price of sell token (optional if coingecko_id provided)
+        sell_token_coingecko_id: CoinGecko ID to fetch price (optional if price provided)
         trade_sizes_usd: List of trade sizes in USD (default: [100K, 500K])
         sell_token_symbol: Symbol for display
         buy_token_symbol: Symbol for display
     """
+    # Fetch price from CoinGecko if ID provided
+    if sell_token_coingecko_id and not sell_token_price_usd:
+        print(f"Fetching {sell_token_coingecko_id} price from CoinGecko...")
+        sell_token_price_usd = get_token_price(sell_token_coingecko_id)
+        print(f"Price: ${sell_token_price_usd:,.2f}")
+    elif not sell_token_price_usd:
+        raise ValueError("Either sell_token_price_usd or sell_token_coingecko_id must be provided")
+
     if trade_sizes_usd is None:
         trade_sizes_usd = [100_000, 500_000]
 

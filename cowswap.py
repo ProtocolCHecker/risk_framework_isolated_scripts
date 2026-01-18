@@ -11,7 +11,22 @@ from typing import Dict, List, Optional
 COWSWAP_API = {
     "ethereum": "https://api.cow.fi/mainnet/api/v1",
     "base": "https://api.cow.fi/base/api/v1",
+    "arbitrum": "https://api.cow.fi/arbitrum_one/api/v1",
 }
+
+COINGECKO_API = "https://api.coingecko.com/api/v3"
+
+
+def get_token_price(coingecko_id: str) -> float:
+    """Fetch current USD price from CoinGecko"""
+    url = f"{COINGECKO_API}/simple/price"
+    params = {"ids": coingecko_id, "vs_currencies": "usd"}
+    response = requests.get(url, params=params, timeout=10)
+    response.raise_for_status()
+    data = response.json()
+    if coingecko_id not in data:
+        raise ValueError(f"Token '{coingecko_id}' not found on CoinGecko")
+    return data[coingecko_id]["usd"]
 
 
 def get_quote(
@@ -62,7 +77,8 @@ def calculate_slippage(
     buy_token: str,
     sell_token_decimals: int,
     buy_token_decimals: int,
-    sell_token_price_usd: float,
+    sell_token_price_usd: Optional[float] = None,
+    sell_token_coingecko_id: Optional[str] = None,
     trade_sizes_usd: Optional[List[int]] = None,
     baseline_index: int = 1,
     sell_token_symbol: str = "SELL",
@@ -78,12 +94,21 @@ def calculate_slippage(
         buy_token: Address of token to buy
         sell_token_decimals: Decimals of sell token
         buy_token_decimals: Decimals of buy token
-        sell_token_price_usd: Current USD price of sell token
+        sell_token_price_usd: Current USD price of sell token (optional if coingecko_id provided)
+        sell_token_coingecko_id: CoinGecko ID to fetch price (optional if price provided)
         trade_sizes_usd: List of trade sizes in USD (optional)
         baseline_index: Index of trade size to use as baseline (default: 1 = 2nd smallest)
         sell_token_symbol: Symbol for display (optional)
         buy_token_symbol: Symbol for display (optional)
     """
+    # Fetch price from CoinGecko if ID provided
+    if sell_token_coingecko_id and not sell_token_price_usd:
+        print(f"Fetching {sell_token_coingecko_id} price from CoinGecko...")
+        sell_token_price_usd = get_token_price(sell_token_coingecko_id)
+        print(f"Price: ${sell_token_price_usd:,.2f}")
+    elif not sell_token_price_usd:
+        raise ValueError("Either sell_token_price_usd or sell_token_coingecko_id must be provided")
+
     if trade_sizes_usd is None:
         trade_sizes_usd = [1_000, 10_000, 50_000, 100_000, 500_000, 1_000_000]
 
@@ -169,14 +194,14 @@ def calculate_slippage(
 if __name__ == "__main__":
     import json
 
-    # Example: cbBTC -> USDC on Ethereum
+    # Example: cbBTC -> USDC on Ethereum (using CoinGecko for price)
     result = calculate_slippage(
         network="ethereum",
         sell_token="0xcbB7C0000aB88B473b1f5aFd9ef808440eed33Bf",  # cbBTC
         buy_token="0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",   # USDC
         sell_token_decimals=8,
         buy_token_decimals=6,
-        sell_token_price_usd=100_000,  # cbBTC price
+        sell_token_coingecko_id="coinbase-wrapped-btc",  # Fetches price automatically
         sell_token_symbol="cbBTC",
         buy_token_symbol="USDC"
     )

@@ -64,17 +64,20 @@ class PancakeSwapV3Analyzer:
         result = self.query_subgraph(query)
         return result.get("data", {}).get("pool")
     
-    def get_all_positions(self, pool_address: str) -> List[dict]:
-        """Fetch all LP positions for a pool (paginated)"""
+    def get_all_positions(self, pool_address: str, max_positions: int = 500) -> List[dict]:
+        """Fetch LP positions for a pool (paginated, limited to max_positions)"""
         all_positions = []
         skip = 0
-        batch_size = 1000
-        
-        while True:
+        batch_size = min(500, max_positions)
+
+        while len(all_positions) < max_positions:
+            remaining = max_positions - len(all_positions)
+            fetch_size = min(batch_size, remaining)
+
             query = f"""
             {{
               positions(
-                first: {batch_size}
+                first: {fetch_size}
                 skip: {skip}
                 where: {{pool: "{pool_address.lower()}", liquidity_gt: "0"}}
               ) {{
@@ -84,18 +87,18 @@ class PancakeSwapV3Analyzer:
               }}
             }}
             """
-            
+
             result = self.query_subgraph(query)
             positions = result.get("data", {}).get("positions", [])
-            
+
             if not positions:
                 break
-            
+
             all_positions.extend(positions)
-            skip += batch_size
-            
+            skip += fetch_size
+
             print(f"  Fetched {len(all_positions)} positions...", end="\r")
-        
+
         print(f"  Total positions fetched: {len(all_positions)}")
         return all_positions
     
