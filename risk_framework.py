@@ -82,7 +82,7 @@ def run_interactive():
         "6. Curve Finance (LP concentration)",
         "7. CowSwap Slippage",
         "8. Cross-DEX Slippage",
-        "9. Oracle Lag",
+        "9. Oracle Freshness & Lag (Price Feeds)",
         "10. Proof of Reserve",
         "11. Price Risk (peg deviation)",
         "12. Run ALL modules",
@@ -316,15 +316,94 @@ def interactive_slippage():
 
 
 def interactive_oracle_lag():
-    """Interactive oracle lag analysis."""
-    print("\n--- Oracle Lag Analysis ---")
+    """Interactive oracle lag and freshness analysis."""
+    print("\n--- Oracle Lag & Freshness Analysis ---")
+    print("This module calculates:")
+    print("  1. Cross-chain LAG using Chainlink Proof of Reserve feeds")
+    print("  2. Price FRESHNESS using Chainlink Price feeds\n")
+    print("Find addresses at: https://data.chain.link/feeds\n")
+
+    # Step 1: PoR feeds for cross-chain lag
+    print("=" * 60)
+    print("STEP 1: Proof of Reserve Feeds (for cross-chain lag)")
+    print("=" * 60)
     chain1 = prompt_choice("Select chain 1:", ["ethereum", "polygon", "arbitrum", "base"])
-    oracle1 = prompt_input("Oracle 1 address (Chainlink feed)")
+    por1 = prompt_input(f"Chainlink PoR feed address on {chain1}")
+
     chain2 = prompt_choice("Select chain 2:", ["ethereum", "polygon", "arbitrum", "base"])
-    oracle2 = prompt_input("Oracle 2 address (Chainlink feed)")
+    por2 = prompt_input(f"Chainlink PoR feed address on {chain2}")
+
+    # Step 2: Price feeds for freshness
+    print("\n" + "=" * 60)
+    print("STEP 2: Price Feeds (for freshness)")
+    print("=" * 60)
+    print("Example: BTC/USD on Ethereum = 0xF4030086522a5bEEa4988F8cA5B36dbC97BeE88c\n")
+
+    price_feeds = []
+    while True:
+        price_chain = prompt_choice("Select chain for price feed:", ["ethereum", "polygon", "arbitrum", "base"])
+        price_address = prompt_input(f"Chainlink Price feed address on {price_chain}")
+        price_feeds.append({"chain": price_chain, "address": price_address})
+
+        add_more = input("\nAdd another price feed? (y/n): ").strip().lower()
+        if add_more != 'y':
+            break
 
     try:
-        return analyze_oracle_lag(chain1, oracle1, chain2, oracle2)
+        from oracle_lag import analyze_oracle_lag, get_oracle_freshness
+
+        # Calculate cross-chain lag using PoR feeds
+        print("\n" + "=" * 70)
+        print("CALCULATING CROSS-CHAIN LAG (using PoR feeds)")
+        print("=" * 70)
+        lag_result = analyze_oracle_lag(chain1, por1, chain2, por2)
+
+        # Calculate price freshness using Price feeds
+        print("\n" + "=" * 70)
+        print("CALCULATING PRICE FRESHNESS (using Price feeds)")
+        print("=" * 70)
+
+        freshness_results = []
+        for pf in price_feeds:
+            freshness = get_oracle_freshness([pf["address"]], pf["chain"])
+            freshness_min = freshness.get("oracles", [{}])[0].get("minutes_since_update") if freshness.get("oracles") else None
+            freshness_results.append({
+                "chain": pf["chain"],
+                "price_feed": pf["address"],
+                "freshness_minutes": freshness_min
+            })
+
+        # Combine results
+        result = {
+            "protocol": "Oracle Lag & Freshness",
+            "status": "success",
+            "cross_chain_lag": {
+                "chain1": chain1,
+                "chain2": chain2,
+                "por_feed1": por1,
+                "por_feed2": por2,
+                "lag_seconds": lag_result.get("lag_seconds"),
+                "lag_minutes": lag_result.get("lag_minutes"),
+                "ahead_chain": lag_result.get("ahead_chain")
+            },
+            "price_freshness": freshness_results
+        }
+
+        # Print summary
+        print("\n" + "=" * 70)
+        print("SUMMARY")
+        print("=" * 70)
+        print(f"\nCross-chain Lag (PoR): {result['cross_chain_lag']['lag_minutes']:.2f} minutes")
+        print(f"  {result['cross_chain_lag']['ahead_chain']} is ahead")
+        print(f"\nPrice Freshness:")
+        for fr in freshness_results:
+            if fr["freshness_minutes"] is not None:
+                print(f"  {fr['chain']}: {fr['freshness_minutes']:.2f} minutes")
+            else:
+                print(f"  {fr['chain']}: Error fetching data")
+        print("=" * 70)
+
+        return result
     except Exception as e:
         return {"status": "error", "error": str(e)}
 

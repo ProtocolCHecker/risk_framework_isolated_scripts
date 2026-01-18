@@ -310,10 +310,10 @@ def get_oracle_data(rpc_url, oracle_address):
         w3 = Web3(Web3.HTTPProvider(rpc_url))
         if not w3.is_connected():
             raise ConnectionError(f"Failed to connect to {rpc_url}")
-        
+
         contract = w3.eth.contract(address=oracle_address, abi=ORACLE_ABI)
         round_data = contract.functions.latestRoundData().call()
-        
+
         return {
             "round_id": round_data[0],
             "price": round_data[1],
@@ -323,6 +323,217 @@ def get_oracle_data(rpc_url, oracle_address):
     except Exception as e:
         print(f"Error fetching data: {e}")
         return None
+
+
+def calculate_oracle_freshness(updated_at_timestamp: int) -> dict:
+    """
+    Calculate how fresh an oracle is based on last update time.
+
+    Formula: Freshness (hours) = (Current Time - Last Oracle Update Time) / 3600
+
+    Args:
+        updated_at_timestamp: Unix timestamp of last oracle update
+
+    Returns:
+        dict with freshness metrics
+    """
+    import time
+    current_time = time.time()
+    seconds_since_update = current_time - updated_at_timestamp
+
+    return {
+        "seconds_since_update": seconds_since_update,
+        "minutes_since_update": seconds_since_update / 60,
+        "hours_since_update": seconds_since_update / 3600,
+        "last_update_timestamp": updated_at_timestamp,
+        "last_update_datetime": datetime.fromtimestamp(updated_at_timestamp).isoformat()
+    }
+
+
+def get_oracle_freshness(
+    oracle_addresses: list,
+    chain_name: str = "ethereum",
+    custom_rpc: str = None
+) -> dict:
+    """
+    Get oracle freshness for one or more Chainlink price feeds on a chain.
+
+    Args:
+        oracle_addresses: List of Chainlink price feed addresses
+        chain_name: Chain name (ethereum, base, arbitrum, etc.)
+        custom_rpc: Optional custom RPC URL
+
+    Returns:
+        dict with freshness data for each oracle and aggregate metrics
+    """
+    import time
+
+    result = {
+        "protocol": "Oracle Freshness",
+        "chain": chain_name,
+        "status": "error",
+        "oracles": [],
+        "aggregate": {}
+    }
+
+    chain_config = get_chain_config(chain_name, custom_rpc)
+    if not chain_config:
+        result["error"] = f"Unknown chain: {chain_name}"
+        return result
+
+    print(f"\n{'='*60}")
+    print(f"ORACLE FRESHNESS CHECK - {chain_config['name']}")
+    print(f"{'='*60}")
+
+    freshness_values = []
+
+    for oracle_address in oracle_addresses:
+        print(f"\nChecking oracle: {oracle_address[:10]}...{oracle_address[-8:]}")
+
+        oracle_data = get_oracle_data(chain_config["rpc"], oracle_address)
+
+        if oracle_data:
+            freshness = calculate_oracle_freshness(oracle_data["updated_at"])
+
+            oracle_result = {
+                "address": oracle_address,
+                "price": oracle_data["price"] / 10**8,
+                "round_id": oracle_data["round_id"],
+                **freshness
+            }
+            result["oracles"].append(oracle_result)
+            freshness_values.append(freshness["minutes_since_update"])
+
+            print(f"  Price: {oracle_data['price'] / 10**8:.8f}")
+            print(f"  Last Update: {freshness['last_update_datetime']}")
+            print(f"  Freshness: {freshness['minutes_since_update']:.2f} minutes ({freshness['hours_since_update']:.2f} hours)")
+        else:
+            result["oracles"].append({
+                "address": oracle_address,
+                "error": "Failed to fetch data"
+            })
+            print(f"  ⚠️  Failed to fetch data")
+
+    # Calculate aggregate metrics
+    if freshness_values:
+        result["aggregate"] = {
+            "min_freshness_minutes": min(freshness_values),
+            "max_freshness_minutes": max(freshness_values),
+            "avg_freshness_minutes": sum(freshness_values) / len(freshness_values),
+            "oracles_checked": len(freshness_values)
+        }
+
+        print(f"\n{'─'*60}")
+        print(f"AGGREGATE METRICS")
+        print(f"  Freshest Oracle: {result['aggregate']['min_freshness_minutes']:.2f} minutes")
+        print(f"  Stalest Oracle: {result['aggregate']['max_freshness_minutes']:.2f} minutes")
+        print(f"  Average Freshness: {result['aggregate']['avg_freshness_minutes']:.2f} minutes")
+
+        result["status"] = "success"
+    else:
+        result["error"] = "No oracle data retrieved"
+
+    print(f"{'='*60}\n")
+    return result
+
+
+def get_cross_chain_oracle_freshness(
+    chain_oracles: list
+) -> dict:
+    """
+    Get oracle freshness across multiple chains and calculate cross-chain lag.
+
+    Args:
+        chain_oracles: List of dicts with keys: chain, oracle_address, rpc (optional)
+
+    Returns:
+        dict with per-chain freshness and cross-chain lag
+    """
+    result = {
+        "protocol": "Cross-Chain Oracle Freshness",
+        "status": "error",
+        "chains": [],
+        "cross_chain_lag": {}
+    }
+
+    print(f"\n{'='*60}")
+    print(f"CROSS-CHAIN ORACLE FRESHNESS")
+    print(f"{'='*60}")
+
+    all_update_times = []
+
+    for chain_oracle in chain_oracles:
+        chain_name = chain_oracle.get("chain", "unknown")
+        oracle_address = chain_oracle.get("oracle_address")
+        custom_rpc = chain_oracle.get("rpc")
+
+        chain_config = get_chain_config(chain_name, custom_rpc)
+        if not chain_config:
+            result["chains"].append({
+                "chain": chain_name,
+                "error": f"Unknown chain: {chain_name}"
+            })
+            continue
+
+        print(f"\n{chain_config['name']}:")
+        oracle_data = get_oracle_data(chain_config["rpc"], oracle_address)
+
+        if oracle_data:
+            freshness = calculate_oracle_freshness(oracle_data["updated_at"])
+
+            chain_result = {
+                "chain": chain_config["name"],
+                "oracle_address": oracle_address,
+                "price": oracle_data["price"] / 10**8,
+                **freshness
+            }
+            result["chains"].append(chain_result)
+            all_update_times.append({
+                "chain": chain_config["name"],
+                "updated_at": oracle_data["updated_at"]
+            })
+
+            print(f"  Oracle: {oracle_address[:10]}...{oracle_address[-8:]}")
+            print(f"  Price: {oracle_data['price'] / 10**8:.8f}")
+            print(f"  Freshness: {freshness['minutes_since_update']:.2f} minutes")
+        else:
+            result["chains"].append({
+                "chain": chain_config["name"],
+                "oracle_address": oracle_address,
+                "error": "Failed to fetch data"
+            })
+            print(f"  ⚠️  Failed to fetch data")
+
+    # Calculate cross-chain lag
+    if len(all_update_times) >= 2:
+        sorted_times = sorted(all_update_times, key=lambda x: x["updated_at"], reverse=True)
+        newest = sorted_times[0]
+        oldest = sorted_times[-1]
+
+        lag_seconds = newest["updated_at"] - oldest["updated_at"]
+
+        result["cross_chain_lag"] = {
+            "lag_seconds": lag_seconds,
+            "lag_minutes": lag_seconds / 60,
+            "newest_chain": newest["chain"],
+            "oldest_chain": oldest["chain"]
+        }
+
+        print(f"\n{'─'*60}")
+        print(f"CROSS-CHAIN LAG")
+        print(f"  Lag: {lag_seconds} seconds ({lag_seconds/60:.2f} minutes)")
+        print(f"  Newest: {newest['chain']}")
+        print(f"  Oldest: {oldest['chain']}")
+
+        result["status"] = "success"
+    elif len(all_update_times) == 1:
+        result["cross_chain_lag"] = {"error": "Only one chain available, cannot calculate lag"}
+        result["status"] = "partial"
+    else:
+        result["error"] = "No oracle data retrieved from any chain"
+
+    print(f"{'='*60}\n")
+    return result
 
 
 def calculate_lag(chain1_data, chain2_data):
