@@ -201,12 +201,13 @@ def fetch_price_data(config: dict) -> dict:
                 result["peg_deviation"] = float(peg_metrics.get("Current Deviation", "0%").replace("%", ""))
 
                 # Calculate risk metrics
+                # Note: calculate_metrics returns formatted strings like "40.92%" (already percentages)
                 risk_metrics = calculate_metrics(token_prices)
-                result["volatility"] = float(risk_metrics.get("Annualized Volatility", "0%").replace("%", "")) * 100
-                result["var_95"] = abs(float(risk_metrics.get("VaR 95%", "0%").replace("%", ""))) * 100
-                result["var_99"] = abs(float(risk_metrics.get("VaR 99%", "0%").replace("%", ""))) * 100
-                result["cvar_95"] = abs(float(risk_metrics.get("CVaR 95%", "0%").replace("%", ""))) * 100
-                result["cvar_99"] = abs(float(risk_metrics.get("CVaR 99%", "0%").replace("%", ""))) * 100
+                result["volatility"] = float(risk_metrics.get("Annualized Volatility", "0%").replace("%", ""))
+                result["var_95"] = abs(float(risk_metrics.get("VaR 95%", "0%").replace("%", "")))
+                result["var_99"] = abs(float(risk_metrics.get("VaR 99%", "0%").replace("%", "")))
+                result["cvar_95"] = abs(float(risk_metrics.get("CVaR 95%", "0%").replace("%", "")))
+                result["cvar_99"] = abs(float(risk_metrics.get("CVaR 99%", "0%").replace("%", "")))
     except Exception as e:
         result["error"] = str(e)
 
