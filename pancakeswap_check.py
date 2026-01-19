@@ -42,18 +42,24 @@ NFT_ABI = [
 ]
 
 
-def verify_pancakeswap_v3_accuracy(chain: str, pool_address: str, top_n: int = 10):
+def verify_pancakeswap_v3_accuracy(chain: str, pool_address: str, top_n: int = 10, subgraph_id: str = None):
     """Verify PancakeSwap V3 data accuracy for a specific pool"""
     pool_address = pool_address.lower()
     w3 = Web3(Web3.HTTPProvider(RPC_URLS[chain]))
-    
+
+    # Use provided subgraph_id or fall back to defaults
+    sg_id = subgraph_id or SUBGRAPH_IDS.get(chain)
+    if not sg_id:
+        return {"accuracy": 0, "error": f"No subgraph ID for chain: {chain}", "total_deviation": 0}
+
     print(f"\n{'='*80}")
     print(f"Verifying PancakeSwap V3 Pool on {chain.upper()}")
     print(f"Pool: {pool_address}")
+    print(f"Subgraph: {sg_id[:20]}...")
     print(f"{'='*80}\n")
 
     # 1. Get total liquidity from subgraph
-    url = f"https://gateway.thegraph.com/api/{GRAPH_API_KEY}/subgraphs/id/{SUBGRAPH_IDS[chain]}"
+    url = f"https://gateway.thegraph.com/api/{GRAPH_API_KEY}/subgraphs/id/{sg_id}"
     query = """query($pool: String!) { pool(id: $pool) { liquidity } }"""
     resp = requests.post(url, json={"query": query, "variables": {"pool": pool_address}})
     subgraph_total = int(resp.json()["data"]["pool"]["liquidity"])

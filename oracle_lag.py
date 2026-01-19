@@ -173,7 +173,7 @@ KNOWN_CHAINS = {
     }
 }
 
-# Chainlink AggregatorV3 ABI (minimal)
+# Chainlink AggregatorV3 ABI (minimal) + fallback for adapters
 ORACLE_ABI = json.loads('''[
     {
         "inputs": [],
@@ -185,6 +185,20 @@ ORACLE_ABI = json.loads('''[
             {"name": "updatedAt", "type": "uint256"},
             {"name": "answeredInRound", "type": "uint80"}
         ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [],
+        "name": "latestAnswer",
+        "outputs": [{"name": "", "type": "int256"}],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [],
+        "name": "decimals",
+        "outputs": [{"name": "", "type": "uint8"}],
         "stateMutability": "view",
         "type": "function"
     }
@@ -305,21 +319,39 @@ Examples:
 
 
 def get_oracle_data(rpc_url, oracle_address):
-    """Fetch latest oracle data from a chain"""
+    """Fetch latest oracle data from a chain.
+
+    Tries latestRoundData() first (standard Chainlink), then falls back
+    to latestAnswer() for adapters (like BGD Labs wstETH/USD).
+    """
     try:
         w3 = Web3(Web3.HTTPProvider(rpc_url))
         if not w3.is_connected():
             raise ConnectionError(f"Failed to connect to {rpc_url}")
 
         contract = w3.eth.contract(address=oracle_address, abi=ORACLE_ABI)
-        round_data = contract.functions.latestRoundData().call()
 
-        return {
-            "round_id": round_data[0],
-            "price": round_data[1],
-            "updated_at": round_data[3],
-            "timestamp": datetime.fromtimestamp(round_data[3])
-        }
+        # Try latestRoundData first (standard Chainlink feeds)
+        try:
+            round_data = contract.functions.latestRoundData().call()
+            return {
+                "round_id": round_data[0],
+                "price": round_data[1],
+                "updated_at": round_data[3],
+                "timestamp": datetime.fromtimestamp(round_data[3])
+            }
+        except Exception:
+            # Fallback to latestAnswer() for adapters (no timestamp available)
+            import time
+            answer = contract.functions.latestAnswer().call()
+            current_time = int(time.time())
+            return {
+                "round_id": 0,  # Not available for adapters
+                "price": answer,
+                "updated_at": current_time,  # Use current time as proxy
+                "timestamp": datetime.fromtimestamp(current_time),
+                "is_adapter": True  # Flag that this is an adapter without timestamp
+            }
     except Exception as e:
         print(f"Error fetching data: {e}")
         return None

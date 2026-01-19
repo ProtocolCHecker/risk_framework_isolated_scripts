@@ -20,14 +20,19 @@ GRAPH_API_BASE = "https://gateway.thegraph.com/api"
 
 
 class PancakeSwapV3Analyzer:
-    def __init__(self, network: str, api_key: str = ""):
+    def __init__(self, network: str, api_key: str = "", subgraph_id: str = None):
         """Initialize analyzer for specific network"""
-        if network not in PANCAKESWAP_SUBGRAPH_IDS:
-            raise ValueError(f"Network must be one of {list(PANCAKESWAP_SUBGRAPH_IDS.keys())}")
-        
         self.network = network
-        self.subgraph_id = PANCAKESWAP_SUBGRAPH_IDS[network]
         self.api_key = api_key
+
+        # Use provided subgraph_id or fall back to defaults
+        if subgraph_id:
+            self.subgraph_id = subgraph_id
+        elif network in PANCAKESWAP_SUBGRAPH_IDS:
+            self.subgraph_id = PANCAKESWAP_SUBGRAPH_IDS[network]
+        else:
+            raise ValueError(f"No subgraph ID for network: {network}. Please provide subgraph_id.")
+
         self.endpoint = f"{GRAPH_API_BASE}/{api_key}/subgraphs/id/{self.subgraph_id}"
     
     def query_subgraph(self, query: str) -> dict:

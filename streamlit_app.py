@@ -21,6 +21,7 @@ import traceback
 import time
 import plotly.express as px
 import plotly.graph_objects as go
+from web3 import Web3
 
 # Add current directory to path for imports
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -215,63 +216,135 @@ def fetch_price_data(config: dict) -> dict:
 
 
 def fetch_proof_of_reserve(config: dict) -> dict:
-    """Fetch Proof of Reserve data with per-chain supply breakdown."""
+    """Fetch Proof of Reserve data - supports multiple verification types."""
     result = {
         "reserve_ratio": None,
         "reserves": None,
         "total_supply": None,
         "chain_supply": {},  # Per-chain supply breakdown
+        "components": {},    # For liquid staking breakdown
+        "verification_type": None,
+        "protocol": None,
         "error": None
     }
 
     por_config = config.get("proof_of_reserve", {})
-    token_addresses = config.get("token_addresses", [])
+    verification_type = por_config.get("verification_type", "chainlink_por")
+    rpc_urls = config.get("rpc_urls", {})
 
-    # Build extended evm_chains list that includes all chains from token_addresses
-    evm_chains = list(por_config.get("evm_chains", []))
-    por_chain_names = {c.get("name", "").lower() for c in evm_chains}
-
-    # Add chains from token_addresses that don't have PoR config (for supply only)
-    for token_cfg in token_addresses:
-        chain_name = token_cfg.get("chain", "").lower()
-        token_addr = token_cfg.get("address")
-
-        if chain_name == "solana" or not token_addr:
-            continue
-
-        if chain_name not in por_chain_names:
-            evm_chains.append({
-                "name": chain_name,
-                "token": token_addr,
-                "por": None  # No PoR feed, will only fetch supply
-            })
-
-    solana_token = por_config.get("solana_token") or config.get("solana_token")
+    result["verification_type"] = verification_type
 
     try:
-        por_result = analyze_proof_of_reserve(
-            evm_chains=evm_chains,
-            solana_token=solana_token
-        )
+        if verification_type == "liquid_staking":
+            # Liquid staking verification (wstETH, rETH, etc.)
+            por_config_with_rpcs = {**por_config, "rpc_urls": rpc_urls}
+            por_result = analyze_proof_of_reserve(config=por_config_with_rpcs)
 
-        if por_result.get("status") == "success":
-            metrics = por_result.get("metrics", {})
-            result["reserve_ratio"] = metrics.get("reserve_ratio", 1.0)
-            result["reserves"] = metrics.get("reserves", 0)
-            result["total_supply"] = metrics.get("total_supply", 0)
-            result["is_fully_backed"] = metrics.get("is_fully_backed", True)
+            result["protocol"] = por_result.get("protocol", "unknown")
 
-            # Extract per-chain supply data
-            chain_data = por_result.get("chain_data", [])
-            for chain in chain_data:
-                chain_name = chain.get("name", "unknown")
-                if chain.get("supply"):
-                    result["chain_supply"][chain_name] = chain["supply"]
+            if por_result.get("status") == "success":
+                metrics = por_result.get("metrics", {})
+                result["reserve_ratio"] = metrics.get("reserve_ratio", 1.0)
+                result["reserves"] = metrics.get("reserves", 0)
+                result["total_supply"] = metrics.get("total_supply", 0)
+                result["is_fully_backed"] = metrics.get("is_fully_backed", True)
 
-            # Add Solana supply if present
-            supply_data = por_result.get("supply", {})
-            if supply_data.get("solana"):
-                result["chain_supply"]["solana"] = supply_data["solana"]
+                # Store components for display
+                result["components"] = por_result.get("components", {})
+
+                # Extract per-chain supply data from PoR result (main chain)
+                chain_data = por_result.get("chain_data", [])
+                main_chain = por_config.get("chain", "ethereum").lower()
+                for chain in chain_data:
+                    chain_name = chain.get("name", "unknown")
+                    if chain.get("supply"):
+                        result["chain_supply"][chain_name] = chain["supply"]
+
+                # Fetch supply from other chains in token_addresses (L2s)
+                token_addresses = config.get("token_addresses", [])
+                for token_cfg in token_addresses:
+                    chain_name = token_cfg.get("chain", "").lower()
+                    token_addr = token_cfg.get("address")
+
+                    # Skip main chain (already have it) and Solana
+                    if chain_name == main_chain or chain_name == "solana" or not token_addr:
+                        continue
+
+                    try:
+                        rpc_url = rpc_urls.get(chain_name)
+                        if not rpc_url:
+                            continue
+
+                        w3 = Web3(Web3.HTTPProvider(rpc_url))
+                        token_contract = w3.eth.contract(
+                            address=Web3.to_checksum_address(token_addr),
+                            abi=[{
+                                "inputs": [], "name": "totalSupply",
+                                "outputs": [{"type": "uint256"}],
+                                "stateMutability": "view", "type": "function"
+                            }, {
+                                "inputs": [], "name": "decimals",
+                                "outputs": [{"type": "uint8"}],
+                                "stateMutability": "view", "type": "function"
+                            }]
+                        )
+                        supply_raw = token_contract.functions.totalSupply().call()
+                        decimals = token_contract.functions.decimals().call()
+                        supply = supply_raw / (10 ** decimals)
+                        result["chain_supply"][chain_name] = supply
+                    except Exception as e:
+                        print(f"Error fetching supply from {chain_name}: {e}")
+
+        else:
+            # Chainlink PoR verification (cbBTC, WBTC, etc.)
+            token_addresses = config.get("token_addresses", [])
+
+            # Build extended evm_chains list that includes all chains from token_addresses
+            evm_chains = list(por_config.get("evm_chains", []))
+            por_chain_names = {c.get("name", "").lower() for c in evm_chains}
+
+            # Add chains from token_addresses that don't have PoR config (for supply only)
+            for token_cfg in token_addresses:
+                chain_name = token_cfg.get("chain", "").lower()
+                token_addr = token_cfg.get("address")
+
+                if chain_name == "solana" or not token_addr:
+                    continue
+
+                if chain_name not in por_chain_names:
+                    evm_chains.append({
+                        "name": chain_name,
+                        "token": token_addr,
+                        "por": None  # No PoR feed, will only fetch supply
+                    })
+
+            solana_token = por_config.get("solana_token") or config.get("solana_token")
+
+            por_result = analyze_proof_of_reserve(
+                evm_chains=evm_chains,
+                solana_token=solana_token
+            )
+
+            result["protocol"] = "chainlink"
+
+            if por_result.get("status") == "success":
+                metrics = por_result.get("metrics", {})
+                result["reserve_ratio"] = metrics.get("reserve_ratio", 1.0)
+                result["reserves"] = metrics.get("reserves", 0)
+                result["total_supply"] = metrics.get("total_supply", 0)
+                result["is_fully_backed"] = metrics.get("is_fully_backed", True)
+
+                # Extract per-chain supply data
+                chain_data = por_result.get("chain_data", [])
+                for chain in chain_data:
+                    chain_name = chain.get("name", "unknown")
+                    if chain.get("supply"):
+                        result["chain_supply"][chain_name] = chain["supply"]
+
+                # Add Solana supply if present
+                supply_data = por_result.get("supply", {})
+                if supply_data.get("solana"):
+                    result["chain_supply"]["solana"] = supply_data["solana"]
 
     except Exception as e:
         result["error"] = str(e)
@@ -465,7 +538,8 @@ def fetch_dex_data(config: dict) -> dict:
             pool_result = None
 
             if protocol == "uniswap":
-                analyzer = UniswapV3Analyzer(chain, GRAPH_API_KEY)
+                subgraph_id = pool.get("subgraph_id")  # Use subgraph_id from config
+                analyzer = UniswapV3Analyzer(chain, GRAPH_API_KEY, subgraph_id=subgraph_id)
                 pool_result = analyzer.analyze_pool(pool_addr)
                 pool_result["protocol"] = "Uniswap V3"
                 pool_result["pool_name"] = pool_name
@@ -475,7 +549,8 @@ def fetch_dex_data(config: dict) -> dict:
                 # PancakeSwap uses the same subgraph format as Uniswap V3
                 try:
                     from pancakeswap import PancakeSwapV3Analyzer
-                    analyzer = PancakeSwapV3Analyzer(chain, GRAPH_API_KEY)
+                    subgraph_id = pool.get("subgraph_id")  # Use subgraph_id from config
+                    analyzer = PancakeSwapV3Analyzer(chain, GRAPH_API_KEY, subgraph_id=subgraph_id)
                     pool_result = analyzer.analyze_pool(pool_addr)
                     pool_result["protocol"] = "PancakeSwap V3"
                 except ImportError:
@@ -610,7 +685,8 @@ def fetch_data_accuracy(config: dict) -> dict:
 
             if protocol == "uniswap":
                 try:
-                    verification = verify_uniswap_v3_accuracy(chain, pool_addr, top_n=5)
+                    subgraph_id = pool.get("subgraph_id")  # Use subgraph_id from config
+                    verification = verify_uniswap_v3_accuracy(chain, pool_addr, top_n=5, subgraph_id=subgraph_id)
                     accuracy_result["accuracy_pct"] = verification.get("accuracy", 0)
                     accuracy_result["total_deviation_pct"] = verification.get("total_deviation", 0)
                     accuracy_result["positions_matched"] = verification.get("matched", 0)
@@ -621,7 +697,8 @@ def fetch_data_accuracy(config: dict) -> dict:
 
             elif protocol == "pancakeswap":
                 try:
-                    verification = verify_pancakeswap_v3_accuracy(chain, pool_addr, top_n=5)
+                    subgraph_id = pool.get("subgraph_id")  # Use subgraph_id from config
+                    verification = verify_pancakeswap_v3_accuracy(chain, pool_addr, top_n=5, subgraph_id=subgraph_id)
                     accuracy_result["accuracy_pct"] = verification.get("accuracy", 0)
                     accuracy_result["total_deviation_pct"] = verification.get("total_deviation", 0)
                     accuracy_result["positions_matched"] = verification.get("matched", 0)
@@ -632,9 +709,9 @@ def fetch_data_accuracy(config: dict) -> dict:
 
             elif protocol == "curve":
                 try:
-                    # For Curve, we verify the gauge/LP token accuracy
-                    gauge_addr = pool.get("gauge_address", pool_addr)
-                    verification = verify_curve_lp_accuracy(chain, gauge_addr, top_n=5)
+                    # For Curve, we pass the pool address - LP token is fetched dynamically or from config
+                    lp_token = pool.get("lp_token")  # Optional explicit LP token for older pools
+                    verification = verify_curve_lp_accuracy(chain, pool_addr, lp_token_override=lp_token, top_n=5)
                     accuracy_result["accuracy_pct"] = verification.get("accuracy", 0)
                     accuracy_result["total_deviation_pct"] = verification.get("total_deviation", 0)
                     accuracy_result["positions_matched"] = verification.get("matched", 0)
@@ -824,8 +901,27 @@ def build_scoring_metrics(config: dict, fetched_data: dict) -> dict:
     # From fetched PoR data
     por_data = fetched_data.get("proof_of_reserve", {}) or {}
     metrics["reserve_ratio"] = por_data.get("reserve_ratio", 1.0)
-    metrics["oracle_freshness_minutes"] = 30  # Would need oracle query
-    metrics["cross_chain_lag_minutes"] = 15
+
+    # From fetched oracle data
+    oracle_data = fetched_data.get("oracle", {}) or {}
+    freshness_list = oracle_data.get("freshness", [])
+
+    # Get minimum freshness (worst case) from successful oracle queries
+    freshness_values = [
+        f.get("minutes_since_update", 30)
+        for f in freshness_list
+        if f.get("status") == "success" and f.get("minutes_since_update") is not None
+    ]
+    metrics["oracle_freshness_minutes"] = max(freshness_values) if freshness_values else 30
+
+    # Cross-chain lag: 0 for liquid staking (no cross-chain PoR), otherwise from fetched data
+    verification_type = por_data.get("verification_type", "chainlink_por")
+    if verification_type == "liquid_staking":
+        # Liquid staking tokens don't have cross-chain PoR feeds to compare
+        metrics["cross_chain_lag_minutes"] = 0
+    else:
+        lag_data = oracle_data.get("lag", {})
+        metrics["cross_chain_lag_minutes"] = lag_data.get("lag_minutes", 15) if lag_data else 15
 
     return metrics
 
@@ -1120,24 +1216,29 @@ def render_tab_methodology_scoring():
     st.markdown("""
     ## Two-Stage Risk Evaluation
 
+    The framework uses a two-stage evaluation process:
+
     ### Stage 1: Qualification Checklist (Binary Pass/Fail)
 
-    These checks must ALL pass before scoring:
+    These checks must **ALL pass** before scoring. If any check fails, the asset is **DISQUALIFIED**.
     """)
 
     if IMPORTS_OK:
-        for check_id, info in PRIMARY_CHECKS.items():
-            st.markdown(f"- **{info['name']}**: {info['condition']}")
+        primary_df = pd.DataFrame([
+            {"Check": info['name'], "Condition": info['condition'], "Disqualify Reason": info['disqualify_reason']}
+            for check_id, info in PRIMARY_CHECKS.items()
+        ])
+        st.dataframe(primary_df, use_container_width=True, hide_index=True)
 
     st.markdown("""
     ### Stage 2: Weighted Category Scoring
 
-    Six risk categories are evaluated:
+    Six risk categories are evaluated and combined into a final score:
     """)
 
     if IMPORTS_OK:
         df = pd.DataFrame([
-            {"Category": k.replace("_", " ").title(), "Weight": f"{v['weight']*100:.0f}%"}
+            {"Category": k.replace("_", " ").title(), "Weight": f"{v['weight']*100:.0f}%", "Justification": v.get('justification', '')[:80] + "..."}
             for k, v in CATEGORY_WEIGHTS.items()
         ])
         st.dataframe(df, use_container_width=True, hide_index=True)
@@ -1151,13 +1252,446 @@ def render_tab_methodology_scoring():
         ])
         st.dataframe(df, use_container_width=True, hide_index=True)
 
-    st.markdown("### Circuit Breakers")
+    st.divider()
+
+    # ==========================================================================
+    # DETAILED CATEGORY BREAKDOWNS
+    # ==========================================================================
+    st.markdown("## Detailed Category Breakdowns")
+    st.caption("Expand each category to see sub-metrics, formulas, data sources, and thresholds.")
+
+    # --------------------------------------------------------------------------
+    # Category 1: Smart Contract Risk
+    # --------------------------------------------------------------------------
+    with st.expander("🔐 Smart Contract Risk (10% weight)", expanded=False):
+        st.markdown("""
+        **Justification:** Lower weight for battle-tested code. DeFi Score allocates 45% for novel protocols, reduced for proven codebases.
+
+        #### 1.1 Audit Score (40% of category)
+
+        **Data Source:** Config JSON `audit_data` field (manual research)
+
+        **Formula:**
+        ```
+        audit_score = base_score (80 if audit exists, 20 if not)
+        if critical_issues > 0: audit_score *= 0.3
+        if high_issues > 0: audit_score *= 0.7
+        if months_since_audit > 12: audit_score *= 0.8
+        if months_since_audit > 24: audit_score *= 0.6
+        if auditor in top_tier: audit_score *= 1.1 (capped at 100)
+        ```
+
+        **Top-tier Auditors:** OpenZeppelin, Trail of Bits, Consensys Diligence, Spearbit, ChainSecurity
+        """)
+
+        st.dataframe(pd.DataFrame([
+            {"Condition": "Multiple top-tier audits, no issues", "Score": 100, "Justification": "DeFiSafety maximum for comprehensive coverage"},
+            {"Condition": "Single reputable audit, no issues", "Score": 80, "Justification": "Most protocols launch with one audit"},
+            {"Condition": "Audit >12 months or minor issues", "Score": 60, "Justification": "DeFi Score penalizes old audits"},
+            {"Condition": "No audit or critical issues", "Score": 20, "Justification": "Unaudited = highest risk"},
+        ]), use_container_width=True, hide_index=True)
+
+        st.markdown("""
+        #### 1.2 Code Maturity (30% of category)
+
+        **Data Source:** Config JSON `deployment_date` field
+
+        **Formula:** Linear interpolation between thresholds based on `days_deployed`
+        """)
+
+        st.dataframe(pd.DataFrame([
+            {"Days Deployed": "730+ (2 years)", "Score": 100, "Justification": "Battle-tested through market cycles"},
+            {"Days Deployed": "365 (1 year)", "Score": 85, "Justification": "DeFi Score maturity benchmark"},
+            {"Days Deployed": "180 (6 months)", "Score": 70, "Justification": "Most exploits occur in first months"},
+            {"Days Deployed": "90 (3 months)", "Score": 50, "Justification": "Minimum for initial confidence"},
+            {"Days Deployed": "30 (1 month)", "Score": 30, "Justification": "High-risk early period"},
+            {"Days Deployed": "0", "Score": 10, "Justification": "Brand new - extreme caution"},
+        ]), use_container_width=True, hide_index=True)
+
+        st.markdown("""
+        #### 1.3 Incident History (30% of category)
+
+        **Data Source:** Config JSON `incidents` array
+
+        **Formula:**
+        ```
+        base = 100
+        for incident in incidents:
+            if incident.funds_lost > 0:
+                base -= 30 + min(30, incident.funds_lost_pct)
+            else:
+                base -= 15
+        return max(0, base)
+        ```
+        """)
+
+    # --------------------------------------------------------------------------
+    # Category 2: Counterparty Risk
+    # --------------------------------------------------------------------------
+    with st.expander("🏢 Counterparty Risk (25% weight)", expanded=False):
+        st.markdown("""
+        **Justification:** Critical for assets with centralized custody or issuance. Aligned with DeFi Score's centralization risk and Aave's counterparty pillar.
+
+        #### 2.1 Admin Key Control (40% of category)
+
+        **Data Source:** Config JSON `multisig_configs`, `has_timelock`, `critical_roles`, `role_weights`
+
+        **Formula:**
+        ```
+        akc_score = 100
+        for role in admin_roles:
+            weight = role_weights.get(role, 3)
+            if role.is_eoa:
+                akc_score -= weight * 15
+            elif role.is_multisig:
+                threshold_ratio = role.threshold / role.total_signers
+                penalty = weight * (1 - threshold_ratio) * 10
+                akc_score -= penalty
+            else:
+                akc_score -= weight * 7  # Unknown contract
+        if not has_timelock:
+            akc_score *= 0.85
+        return max(0, akc_score)
+        ```
+        """)
+
+        st.dataframe(pd.DataFrame([
+            {"Configuration": "All 4+/7+ multisig with timelock", "Score": 100, "Justification": "Aave governance standard"},
+            {"Configuration": "All 3+/5+ multisig with timelock", "Score": 90, "Justification": "Gnosis Safe default"},
+            {"Configuration": "All 2+/3+ multisig with timelock", "Score": 75, "Justification": "Low redundancy"},
+            {"Configuration": "Mixed multisig/EOA with timelock", "Score": 55, "Justification": "Partial decentralization"},
+            {"Configuration": "Multisig but no timelock", "Score": 45, "Justification": "No community response time"},
+            {"Configuration": "Any critical role is EOA", "Score": 25, "Justification": "Single key = highest risk"},
+        ]), use_container_width=True, hide_index=True)
+
+        st.markdown("""
+        #### 2.2 Custody Model (30% of category)
+
+        **Data Source:** Config JSON `custody_model` field
+        """)
+
+        st.dataframe(pd.DataFrame([
+            {"Model": "decentralized", "Score": 100, "Justification": "No counterparty risk - smart contract custody"},
+            {"Model": "regulated_insured", "Score": 85, "Justification": "Regulatory oversight + insurance"},
+            {"Model": "regulated", "Score": 70, "Justification": "Compliance but limited loss protection"},
+            {"Model": "unregulated", "Score": 45, "Justification": "Reputation-based trust only"},
+            {"Model": "unknown", "Score": 20, "Justification": "Highest custodian risk"},
+        ]), use_container_width=True, hide_index=True)
+
+        st.markdown("""
+        #### 2.3 Timelock Presence (15% of category)
+
+        **Data Source:** Config JSON `has_timelock`, `timelock_hours`
+        """)
+
+        st.dataframe(pd.DataFrame([
+            {"Delay (hours)": "168+ (7 days)", "Score": 100, "Justification": "Compound standard for full review"},
+            {"Delay (hours)": "48", "Score": 85, "Justification": "Reasonable minimum"},
+            {"Delay (hours)": "24", "Score": 70, "Justification": "Basic review time"},
+            {"Delay (hours)": "6", "Score": 50, "Justification": "Only prevents immediate rug"},
+            {"Delay (hours)": "0", "Score": 30, "Justification": "Actions are immediate"},
+        ]), use_container_width=True, hide_index=True)
+
+        st.markdown("""
+        #### 2.4 Blacklist Capability (15% of category)
+
+        **Data Source:** Config JSON `has_blacklist`, `blacklist_control`
+        """)
+
+        st.dataframe(pd.DataFrame([
+            {"Capability": "No blacklist", "Score": 100, "Justification": "Censorship-resistant"},
+            {"Capability": "Governance-controlled", "Score": 75, "Justification": "Requires decentralized approval"},
+            {"Capability": "Multisig-controlled", "Score": 55, "Justification": "Compliance trade-off"},
+            {"Capability": "Single entity/EOA", "Score": 30, "Justification": "Highest censorship risk"},
+        ]), use_container_width=True, hide_index=True)
+
+    # --------------------------------------------------------------------------
+    # Category 3: Market Risk
+    # --------------------------------------------------------------------------
+    with st.expander("📊 Market Risk (15% weight)", expanded=False):
+        st.markdown("""
+        **Justification:** Peg deviation and volatility matter for wrapped/synthetic assets. Based on Aave's market risk category.
+
+        #### 3.1 Peg Deviation (40% of category)
+
+        **Data Source:** CoinGecko API via `price_risk.py`
+        - Fetches prices for `token_coingecko_id` and `underlying_coingecko_id`
+        - Calculates deviation: `(token_price / underlying_price - 1) * 100`
+        """)
+
+        st.dataframe(pd.DataFrame([
+            {"Deviation %": "< 0.1%", "Score": 100, "Justification": "Within normal arbitrage bounds"},
+            {"Deviation %": "< 0.5%", "Score": 90, "Justification": "S&P SSA considers stable"},
+            {"Deviation %": "< 1.0%", "Score": 75, "Justification": "Acceptable for wrapped assets"},
+            {"Deviation %": "< 2.0%", "Score": 55, "Justification": "Liquidity stress indicator"},
+            {"Deviation %": "< 5.0%", "Score": 30, "Justification": "Significant depeg warning"},
+            {"Deviation %": "> 5.0%", "Score": 10, "Justification": "Serious peg failure"},
+        ]), use_container_width=True, hide_index=True)
+
+        st.markdown("""
+        #### 3.2 Volatility Annualized (30% of category)
+
+        **Data Source:** CoinGecko API via `price_risk.py`
+        - Fetches 365 days of historical prices
+        - Calculates: `std(daily_returns) * sqrt(365) * 100`
+
+        **Formula:** `score = max(0, 100 - (volatility_pct - 20) * 1.25)`
+        """)
+
+        st.dataframe(pd.DataFrame([
+            {"Volatility %": "< 20%", "Score": 100, "Justification": "Low for crypto, comparable to gold"},
+            {"Volatility %": "20-40%", "Score": 80, "Justification": "Moderate, large-cap in calm markets"},
+            {"Volatility %": "40-60%", "Score": 60, "Justification": "BTC historical average"},
+            {"Volatility %": "60-80%", "Score": 40, "Justification": "Stress period volatility"},
+            {"Volatility %": "> 80%", "Score": 20, "Justification": "Crisis-level"},
+        ]), use_container_width=True, hide_index=True)
+
+        st.markdown("""
+        #### 3.3 VaR 95% (30% of category)
+
+        **Data Source:** CoinGecko API via `price_risk.py`
+        - Calculates: `percentile(daily_returns, 5)` (5th percentile = 95% VaR)
+        """)
+
+        st.dataframe(pd.DataFrame([
+            {"VaR %": "< 3%", "Score": 100, "Justification": "Conservative, low tail risk"},
+            {"VaR %": "3-5%", "Score": 85, "Justification": "Gauntlet baseline threshold"},
+            {"VaR %": "5-8%", "Score": 65, "Justification": "Typical crypto volatility"},
+            {"VaR %": "8-12%", "Score": 45, "Justification": "Significant drawdown risk"},
+            {"VaR %": "> 12%", "Score": 25, "Justification": "Flash crash territory"},
+        ]), use_container_width=True, hide_index=True)
+
+    # --------------------------------------------------------------------------
+    # Category 4: Liquidity Risk
+    # --------------------------------------------------------------------------
+    with st.expander("💧 Liquidity Risk (15% weight)", expanded=False):
+        st.markdown("""
+        **Justification:** Essential for redemption capability and DeFi utility. Gauntlet emphasizes slippage analysis for liquidation efficiency.
+
+        #### 4.1 Slippage at $100K (40% of category)
+
+        **Data Source:** `slippage_check.py`
+        - Uses 1inch API / DEX aggregators
+        - Simulates $100K swap and calculates price impact
+        """)
+
+        st.dataframe(pd.DataFrame([
+            {"Slippage %": "< 0.1%", "Score": 100, "Justification": "Excellent depth"},
+            {"Slippage %": "< 0.3%", "Score": 90, "Justification": "Institutional-grade"},
+            {"Slippage %": "< 0.5%", "Score": 80, "Justification": "Good for most traders"},
+            {"Slippage %": "0.5-1.0%", "Score": 65, "Justification": "CowSwap acceptable range"},
+            {"Slippage %": "1.0-2.0%", "Score": 45, "Justification": "Significant execution cost"},
+            {"Slippage %": "> 2.0%", "Score": 20, "Justification": "Liquidation efficiency at risk"},
+        ]), use_container_width=True, hide_index=True)
+
+        st.markdown("""
+        #### 4.2 Slippage at $500K (30% of category)
+
+        **Data Source:** `slippage_check.py` (same method, larger amount)
+        """)
+
+        st.dataframe(pd.DataFrame([
+            {"Slippage %": "< 0.5%", "Score": 100, "Justification": "Deep institutional liquidity"},
+            {"Slippage %": "< 1.0%", "Score": 85, "Justification": "Large trades execute cleanly"},
+            {"Slippage %": "1.0-2.0%", "Score": 65, "Justification": "Acceptable for large trades"},
+            {"Slippage %": "2.0-5.0%", "Score": 40, "Justification": "May need to split orders"},
+            {"Slippage %": "> 5.0%", "Score": 15, "Justification": "Thin liquidity"},
+        ]), use_container_width=True, hide_index=True)
+
+        st.markdown("""
+        #### 4.3 HHI Concentration (30% of category)
+
+        **Data Source:** Blockscout API via `curve_check.py` / `uniswap_check.py`
+        - Fetches top LP holders
+        - Calculates: `HHI = sum(market_share_i²) * 10000`
+        """)
+
+        st.dataframe(pd.DataFrame([
+            {"HHI": "< 1000", "Score": 100, "Justification": "Unconcentrated (DOJ/FTC standard)"},
+            {"HHI": "1000-1500", "Score": 85, "Justification": "Healthy LP diversity"},
+            {"HHI": "1500-2500", "Score": 65, "Justification": "DOJ review threshold"},
+            {"HHI": "2500-4000", "Score": 45, "Justification": "Whale LP risk"},
+            {"HHI": "4000-6000", "Score": 25, "Justification": "Single LP could destabilize"},
+            {"HHI": "> 6000", "Score": 5, "Justification": "Approaching monopoly"},
+        ]), use_container_width=True, hide_index=True)
+
+    # --------------------------------------------------------------------------
+    # Category 5: Collateral Risk
+    # --------------------------------------------------------------------------
+    with st.expander("🏦 Collateral Risk (10% weight)", expanded=False):
+        st.markdown("""
+        **Justification:** Secondary risk - depends on DeFi protocol usage. Based on Chaos Labs' cascade liquidation framework.
+
+        *Note: Metrics are TVL-weighted averages across all lending markets.*
+
+        #### 5.1 Cascade Liquidation Risk (40% of category)
+
+        **Data Source:** `aave_check.py`, `compound_check.py`
+        - Queries on-chain positions with health factor < 1.1
+        - CLR = (value_at_risk / total_supplied) * 100
+        """)
+
+        st.dataframe(pd.DataFrame([
+            {"CLR %": "< 2%", "Score": 100, "Justification": "Minimal cascade potential"},
+            {"CLR %": "2-5%", "Score": 85, "Justification": "Gauntlet acceptable range"},
+            {"CLR %": "5-10%", "Score": 65, "Justification": "Elevated cascade risk"},
+            {"CLR %": "10-20%", "Score": 40, "Justification": "Significant liquidation wave possible"},
+            {"CLR %": "> 20%", "Score": 20, "Justification": "Cascade liquidation likely"},
+        ]), use_container_width=True, hide_index=True)
+
+        st.markdown("""
+        #### 5.2 Recursive Lending Ratio (35% of category)
+
+        **Data Source:** `aave_check.py`, `compound_check.py`
+        - Detects looped positions (borrow → deposit cycles)
+        - RLR = (looped_value / total_supplied) * 100
+        """)
+
+        st.dataframe(pd.DataFrame([
+            {"RLR %": "< 5%", "Score": 100, "Justification": "Minimal leverage risk"},
+            {"RLR %": "5-10%", "Score": 80, "Justification": "Some yield farming"},
+            {"RLR %": "10-20%", "Score": 60, "Justification": "Notable leverage"},
+            {"RLR %": "20-35%", "Score": 40, "Justification": "Significant deleverage risk"},
+            {"RLR %": "> 35%", "Score": 20, "Justification": "System heavily leveraged"},
+        ]), use_container_width=True, hide_index=True)
+
+        st.markdown("""
+        #### 5.3 Utilization Rate (25% of category)
+
+        **Data Source:** `aave_check.py`, `compound_check.py`
+        - On-chain query: utilization = (borrowed / supplied) * 100
+        """)
+
+        st.dataframe(pd.DataFrame([
+            {"Utilization %": "< 50%", "Score": 100, "Justification": "Healthy buffer"},
+            {"Utilization %": "50-70%", "Score": 85, "Justification": "Aave optimal range"},
+            {"Utilization %": "70-85%", "Score": 65, "Justification": "Approaching rate curve kink"},
+            {"Utilization %": "85-95%", "Score": 40, "Justification": "Withdrawal constrained"},
+            {"Utilization %": "> 95%", "Score": 15, "Justification": "Suppliers may not withdraw"},
+        ]), use_container_width=True, hide_index=True)
+
+    # --------------------------------------------------------------------------
+    # Category 6: Reserve & Oracle Risk
+    # --------------------------------------------------------------------------
+    with st.expander("🔮 Reserve & Oracle Risk (25% weight)", expanded=False):
+        st.markdown("""
+        **Justification:** Fundamental to wrapped asset integrity. S&P SSA and Moody's emphasize reserve quality as primary factor.
+
+        #### 6.1 Proof of Reserves (50% of category)
+
+        **Data Source:** `proof_of_reserve.py`
+        - For Chainlink PoR: Queries `evm_chains[].por` aggregator contracts
+        - Compares: (reserves / total_supply)
+
+        **Formula:**
+        ```
+        if ratio >= 1.0:
+            score = 95 + min(5, (ratio - 1.0) * 100)
+        else:
+            score = max(0, 95 - (1.0 - ratio) * 500)
+        ```
+        """)
+
+        st.dataframe(pd.DataFrame([
+            {"Ratio": "> 102%", "Score": 100, "Justification": "Overcollateralized buffer"},
+            {"Ratio": "100%", "Score": 95, "Justification": "Minimum for A grade"},
+            {"Ratio": "99%", "Score": 70, "Justification": "Minor shortfall (timing/rounding)"},
+            {"Ratio": "98%", "Score": 50, "Justification": "2% unbacked is material"},
+            {"Ratio": "95%", "Score": 25, "Justification": "Significant shortfall"},
+            {"Ratio": "< 95%", "Score": 10, "Justification": "Solvency concern"},
+        ]), use_container_width=True, hide_index=True)
+
+        st.markdown("""
+        #### 6.2 Oracle Freshness (25% of category)
+
+        **Data Source:** `oracle_lag.py`
+        - On-chain query to Chainlink aggregators
+        - Reads `latestRoundData().updatedAt`
+        - Calculates: `(now - updatedAt) / 60` (minutes)
+        """)
+
+        st.dataframe(pd.DataFrame([
+            {"Minutes": "< 5", "Score": 100, "Justification": "Real-time (Chainlink heartbeat)"},
+            {"Minutes": "< 30", "Score": 90, "Justification": "Within normal update cycle"},
+            {"Minutes": "30-60", "Score": 75, "Justification": "Chainlink 1hr heartbeat"},
+            {"Minutes": "60-180", "Score": 50, "Justification": "Price may have moved"},
+            {"Minutes": "180-360", "Score": 25, "Justification": "Arbitrage risk"},
+            {"Minutes": "> 360", "Score": 10, "Justification": "Oracle effectively offline"},
+        ]), use_container_width=True, hide_index=True)
+
+        st.markdown("""
+        #### 6.3 Cross-Chain Oracle Lag (25% of category)
+
+        **Data Source:** `oracle_lag.py`
+        - Queries same oracle on multiple chains
+        - Calculates: max(|timestamp_chain_a - timestamp_chain_b|)
+        """)
+
+        st.dataframe(pd.DataFrame([
+            {"Minutes": "< 5", "Score": 100, "Justification": "Excellent cross-chain sync"},
+            {"Minutes": "< 15", "Score": 85, "Justification": "Minor arbitrage window"},
+            {"Minutes": "15-30", "Score": 70, "Justification": "Acceptable for most use cases"},
+            {"Minutes": "30-60", "Score": 50, "Justification": "Meaningful arbitrage opportunity"},
+            {"Minutes": "60-120", "Score": 30, "Justification": "Problematic for cross-chain ops"},
+        ]), use_container_width=True, hide_index=True)
+
+    st.divider()
+
+    # ==========================================================================
+    # CIRCUIT BREAKERS
+    # ==========================================================================
+    st.markdown("## Circuit Breakers")
+    st.caption("Circuit breakers cap or modify the final score regardless of category scores.")
 
     if IMPORTS_OK:
+        breaker_data = []
         for name, breaker in CIRCUIT_BREAKERS.items():
-            effect = f"Max Grade: {breaker.get('max_grade')}" if 'max_grade' in breaker else f"Multiplier: {breaker.get('multiplier')}"
-            st.markdown(f"- **{name.replace('_', ' ').title()}**: {effect}")
-            st.caption(f"  {breaker.get('justification', '')[:100]}...")
+            effect = f"Max Grade: {breaker.get('max_grade')}" if 'max_grade' in breaker else f"Score × {breaker.get('multiplier')}"
+            breaker_data.append({
+                "Breaker": name.replace('_', ' ').title(),
+                "Condition": breaker.get('condition', 'N/A'),
+                "Effect": effect,
+                "Justification": breaker.get('justification', '')[:60] + "..."
+            })
+        st.dataframe(pd.DataFrame(breaker_data), use_container_width=True, hide_index=True)
+
+    st.divider()
+
+    # ==========================================================================
+    # DATA SOURCES SUMMARY
+    # ==========================================================================
+    st.markdown("## Data Sources Summary")
+
+    st.dataframe(pd.DataFrame([
+        {"Data Type": "Price data (365 days)", "Source": "CoinGecko API", "Script": "price_risk.py"},
+        {"Data Type": "Proof of Reserves", "Source": "Chainlink PoR contracts", "Script": "proof_of_reserve.py"},
+        {"Data Type": "Oracle timestamps", "Source": "Chainlink aggregators", "Script": "oracle_lag.py"},
+        {"Data Type": "Lending metrics (Aave)", "Source": "Aave V3 Pool + DataProvider", "Script": "aave_check.py"},
+        {"Data Type": "Lending metrics (Compound)", "Source": "Compound V3 Comet contracts", "Script": "compound_check.py"},
+        {"Data Type": "DEX liquidity (Uniswap)", "Source": "The Graph subgraphs", "Script": "uniswap_check.py"},
+        {"Data Type": "DEX liquidity (Curve)", "Source": "Blockscout API", "Script": "curve_check.py"},
+        {"Data Type": "LP holder concentration", "Source": "Blockscout API", "Script": "curve_check.py, uniswap_check.py"},
+        {"Data Type": "Slippage simulation", "Source": "1inch API / Aggregators", "Script": "slippage_check.py"},
+        {"Data Type": "Audit/Governance data", "Source": "Manual research", "Script": "Config JSON"},
+    ]), use_container_width=True, hide_index=True)
+
+    st.divider()
+
+    # ==========================================================================
+    # KEY METRICS GLOSSARY
+    # ==========================================================================
+    st.markdown("## Key Metrics Glossary")
+
+    st.markdown("""
+    | Metric | Definition |
+    |--------|------------|
+    | **RLR** (Recursive Lending Ratio) | % of supply in looped/leveraged positions |
+    | **CLR** (Cascade Liquidation Risk) | % of debt with health factor < 1.1 |
+    | **HHI** (Herfindahl-Hirschman Index) | Liquidity concentration across pools (0-10000) |
+    | **Slippage** | Price impact for executing a trade of given size |
+    | **VaR 95%** | Maximum expected daily loss at 95% confidence |
+    | **TVL-weighted average** | Lending metrics aggregated proportionally by TVL |
+    """)
 
 
 # =============================================================================
@@ -1276,14 +1810,27 @@ def render_tab_protocol_info():
             st.caption("No price feeds configured")
 
     with col2:
-        st.markdown("**Proof of Reserve Feeds**")
+        st.markdown("**Proof of Reserve**")
         por = config.get("proof_of_reserve", {})
-        chains = por.get("evm_chains", [])
-        if chains:
-            for chain in chains:
-                st.markdown(f"- {chain.get('name', 'Unknown').title()}: `{chain.get('por', 'N/A')[:20]}...`")
+        verification_type = por.get("verification_type", "chainlink_por")
+
+        if verification_type == "liquid_staking":
+            protocol = por.get("protocol", "unknown")
+            st.markdown(f"- Type: **Liquid Staking** ({protocol.title()})")
+            contracts = por.get("contracts", {})
+            if contracts:
+                for name, addr in contracts.items():
+                    st.markdown(f"- {name}: `{addr[:20]}...`")
         else:
-            st.caption("No PoR feeds configured")
+            st.markdown("- Type: **Chainlink PoR**")
+            chains = por.get("evm_chains", [])
+            if chains:
+                for chain in chains:
+                    por_addr = chain.get('por', 'N/A')
+                    if por_addr and len(por_addr) > 20:
+                        st.markdown(f"- {chain.get('name', 'Unknown').title()}: `{por_addr[:20]}...`")
+            else:
+                st.caption("No PoR feeds configured")
 
 
 # =============================================================================
@@ -2030,8 +2577,11 @@ def render_tab_data_accuracy():
     if dex_accuracy:
         # Summary metrics
         successful = [d for d in dex_accuracy if d.get("status") == "success"]
-        avg_accuracy = sum(d.get("accuracy_pct", 0) for d in successful) / len(successful) if successful else 0
-        avg_deviation = sum(d.get("total_deviation_pct", 0) for d in successful) / len(successful) if successful else 0
+        # Filter out None values when calculating averages
+        accuracy_values = [d.get("accuracy_pct") for d in successful if d.get("accuracy_pct") is not None]
+        deviation_values = [d.get("total_deviation_pct") for d in successful if d.get("total_deviation_pct") is not None]
+        avg_accuracy = sum(accuracy_values) / len(accuracy_values) if accuracy_values else 0
+        avg_deviation = sum(deviation_values) / len(deviation_values) if deviation_values else 0
 
         col1, col2, col3 = st.columns(3)
         with col1:
@@ -2070,10 +2620,12 @@ def render_tab_data_accuracy():
                 with col1:
                     # Accuracy metrics table
                     st.markdown("##### Verification Results")
+                    acc_pct = pool.get("accuracy_pct")
+                    dev_pct = pool.get("total_deviation_pct")
                     accuracy_data = [
                         {"Metric": "Data Source", "Value": pool.get("data_source", "N/A")},
-                        {"Metric": "Accuracy Score", "Value": f"{pool.get('accuracy_pct', 0):.1f}%"},
-                        {"Metric": "Total Liquidity Deviation", "Value": f"{pool.get('total_deviation_pct', 0):.4f}%"},
+                        {"Metric": "Accuracy Score", "Value": f"{acc_pct:.1f}%" if acc_pct is not None else "N/A (Unverifiable)"},
+                        {"Metric": "Total Liquidity Deviation", "Value": f"{dev_pct:.4f}%" if dev_pct is not None else "N/A"},
                         {"Metric": "Positions Matched", "Value": f"{pool.get('positions_matched', 0)}/5"},
                     ]
                     df_accuracy = pd.DataFrame(accuracy_data)
@@ -2081,28 +2633,37 @@ def render_tab_data_accuracy():
 
                 with col2:
                     # Visual indicator
-                    accuracy_pct = pool.get("accuracy_pct", 0)
+                    accuracy_pct = pool.get("accuracy_pct")
 
-                    if accuracy_pct == 100:
+                    if accuracy_pct is None:
+                        status_text = "UNVERIFIABLE"
+                        color = "#f59e0b"  # Orange/amber
+                        accuracy_display = "N/A"
+                    elif accuracy_pct == 100:
                         status_text = "VERIFIED"
                         color = "#22c55e"
+                        accuracy_display = f"{accuracy_pct:.1f}%"
                     elif accuracy_pct >= 50:
                         status_text = "PARTIAL"
                         color = "#eab308"
+                        accuracy_display = f"{accuracy_pct:.1f}%"
                     else:
                         status_text = "FAILED"
                         color = "#ef4444"
+                        accuracy_display = f"{accuracy_pct:.1f}%"
 
                     st.markdown(f"""
                     <div style="text-align: center; padding: 20px; background-color: {color}; border-radius: 10px; color: white;">
                         <h2 style="margin: 0;">{status_text}</h2>
-                        <h3 style="margin: 5px 0 0 0;">{accuracy_pct:.1f}%</h3>
+                        <h3 style="margin: 5px 0 0 0;">{accuracy_display}</h3>
                     </div>
                     """, unsafe_allow_html=True)
 
                     # Interpretation
                     st.markdown("**Interpretation:**")
-                    if accuracy_pct == 100:
+                    if accuracy_pct is None:
+                        st.warning("Subgraph data format cannot be verified on-chain (e.g., Messari schema).")
+                    elif accuracy_pct == 100:
                         st.success("All sampled positions match on-chain data exactly.")
                     elif accuracy_pct >= 80:
                         st.info("Most positions match. Minor deviations may be due to indexing lag.")
@@ -2169,6 +2730,14 @@ def render_tab_risk_metrics():
         st.subheader("Proof of Reserves")
         por = fetched.get("proof_of_reserve") or {}
 
+        # Show verification type
+        verification_type = por.get("verification_type", "chainlink_por")
+        protocol = por.get("protocol", "unknown")
+        if verification_type == "liquid_staking":
+            st.caption(f"Verification: Liquid Staking ({protocol.title()})")
+        else:
+            st.caption("Verification: Chainlink PoR")
+
         reserve_ratio = por.get("reserve_ratio", 1.0)
         st.metric("Reserve Ratio", format_percentage(reserve_ratio * 100))
 
@@ -2181,6 +2750,25 @@ def render_tab_risk_metrics():
             st.metric("Reserves", format_number(por["reserves"], 4))
         if por.get("total_supply"):
             st.metric("Total Supply", format_number(por["total_supply"], 4))
+
+        # Show liquid staking components if available
+        components = por.get("components", {})
+        if components and verification_type == "liquid_staking":
+            with st.expander("Staking Components", expanded=False):
+                if components.get("beacon_validators"):
+                    st.metric("Active Validators", f"{components['beacon_validators']:,}")
+                if components.get("beacon_balance"):
+                    st.metric("Beacon Balance", f"{format_number(components['beacon_balance'], 2)} ETH")
+                if components.get("buffered_ether"):
+                    st.metric("Buffered Ether", f"{format_number(components['buffered_ether'], 2)} ETH")
+                if components.get("transient_validators"):
+                    st.metric("Validators in Transit", f"{components['transient_validators']:,}")
+                # wstETH specific
+                wsteth = components.get("wsteth", {})
+                if wsteth:
+                    st.markdown("**wstETH**")
+                    if wsteth.get("steth_per_wsteth"):
+                        st.metric("stETH per wstETH", f"{wsteth['steth_per_wsteth']:.6f}")
 
     with col2:
         st.subheader("Price Risk")

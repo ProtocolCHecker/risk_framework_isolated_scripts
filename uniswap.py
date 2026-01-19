@@ -2,135 +2,247 @@
 """
 Uniswap V3 Pool Analyzer
 Analyzes TVL, holder concentration (HHI), and LP distribution
+Supports both Uniswap official schema and Messari schema
 """
 
 import requests
 from collections import defaultdict
-from typing import Dict, List, Tuple
+from typing import Dict, List, Optional
 
-# The Graph Subgraph IDs
-SUBGRAPH_IDS = {
+# Default subgraph IDs (Uniswap official schema)
+DEFAULT_SUBGRAPH_IDS = {
     "ethereum": "5zvR82QoaXYFyDEKLZ9t6v9adgnptxYpKpSbxtgVENFV",
     "base": "43Hwfi3dJSoGpyas9VwNoDAv55yjgGrPpNSmbQZArzMG",
     "arbitrum": "FbCGRftH4a3yZugY7TnbYgPJVEv2LvMT6oF1fxPe9aJM",
+}
+
+# Messari schema subgraph IDs (different entity names)
+MESSARI_SUBGRAPH_IDS = {
+    "arbitrum": "FQ6JYszEKApsBpAmiHesRsd9Ygc6mzmpNRANeVQFYoVX",
 }
 
 GRAPH_API_BASE = "https://gateway.thegraph.com/api"
 
 
 class UniswapV3Analyzer:
-    def __init__(self, network: str, api_key: str = ""):
-        """Initialize analyzer for specific network"""
-        if network not in SUBGRAPH_IDS:
-            raise ValueError(f"Network must be one of {list(SUBGRAPH_IDS.keys())}")
-        
-        self.network = network
-        self.subgraph_id = SUBGRAPH_IDS[network]
-        self.api_key = api_key
-        self.endpoint = f"{GRAPH_API_BASE}/{api_key}/subgraphs/id/{self.subgraph_id}"
-    
-    def query_subgraph(self, query: str) -> dict:
-        """Execute GraphQL query against The Graph"""
-        response = requests.post(self.endpoint, json={"query": query})
-        response.raise_for_status()
-        return response.json()
-    
-    def get_pool_data(self, pool_address: str) -> dict:
-        """Get pool information (TVL, token amounts, etc.)"""
-        query = f"""
-        {{
-          pool(id: "{pool_address.lower()}") {{
-            id
-            token0 {{
-              id
-              symbol
-              decimals
-            }}
-            token1 {{
-              id
-              symbol
-              decimals
-            }}
-            totalValueLockedToken0
-            totalValueLockedToken1
-            totalValueLockedUSD
-            liquidity
-            feeTier
-          }}
-        }}
+    def __init__(self, network: str, api_key: str = "", subgraph_id: str = None):
         """
-        
+        Initialize analyzer for specific network.
+
+        Args:
+            network: Chain name (ethereum, base, arbitrum)
+            api_key: The Graph API key
+            subgraph_id: Optional custom subgraph ID (overrides defaults)
+        """
+        self.network = network
+        self.api_key = api_key
+
+        # Use provided subgraph_id or fall back to defaults
+        if subgraph_id:
+            self.subgraph_id = subgraph_id
+        elif network in DEFAULT_SUBGRAPH_IDS:
+            self.subgraph_id = DEFAULT_SUBGRAPH_IDS[network]
+        else:
+            raise ValueError(f"No subgraph ID for network: {network}. Please provide subgraph_id.")
+
+        self.endpoint = f"{GRAPH_API_BASE}/{api_key}/subgraphs/id/{self.subgraph_id}"
+
+        # Detect schema type
+        self.schema_type = self._detect_schema()
+
+    def _detect_schema(self) -> str:
+        """Detect whether subgraph uses Uniswap official or Messari schema."""
+        # Try Uniswap official schema first (has 'pool' entity)
+        query = '{ __type(name: "Pool") { name } }'
         result = self.query_subgraph(query)
-        return result.get("data", {}).get("pool")
-    
-    def get_all_positions(self, pool_address: str) -> List[dict]:
-        """Fetch all LP positions for a pool (paginated)"""
-        all_positions = []
-        skip = 0
-        batch_size = 1000
-        
-        while True:
+
+        if result and result.get("data", {}).get("__type"):
+            return "uniswap"
+
+        # Check for Messari schema (has 'LiquidityPool' entity)
+        query = '{ __type(name: "LiquidityPool") { name } }'
+        result = self.query_subgraph(query)
+
+        if result and result.get("data", {}).get("__type"):
+            return "messari"
+
+        # Default to uniswap schema
+        return "uniswap"
+
+    def query_subgraph(self, query: str) -> Optional[dict]:
+        """Execute GraphQL query against The Graph."""
+        try:
+            response = requests.post(self.endpoint, json={"query": query}, timeout=30)
+            response.raise_for_status()
+            return response.json()
+        except Exception as e:
+            print(f"Query error: {e}")
+            return None
+
+    def get_pool_data(self, pool_address: str) -> Optional[dict]:
+        """Get pool information (TVL, token amounts, etc.)."""
+        pool_id = pool_address.lower()
+
+        if self.schema_type == "messari":
             query = f"""
             {{
-              positions(
-                first: {batch_size}
-                skip: {skip}
-                where: {{pool: "{pool_address.lower()}", liquidity_gt: "0"}}
-              ) {{
+              liquidityPool(id: "{pool_id}") {{
                 id
-                owner
-                liquidity
+                name
+                totalValueLockedUSD
+                inputTokens {{
+                  id
+                  symbol
+                  decimals
+                }}
+                inputTokenBalances
+                fees {{
+                  feePercentage
+                }}
               }}
             }}
             """
-            
             result = self.query_subgraph(query)
+            pool = result.get("data", {}).get("liquidityPool") if result else None
+
+            if pool:
+                # Normalize to common format
+                tokens = pool.get("inputTokens", [])
+                balances = pool.get("inputTokenBalances", [])
+                fees = pool.get("fees", [])
+                fee_tier = float(fees[0]["feePercentage"]) * 10000 if fees else 0
+
+                return {
+                    "id": pool["id"],
+                    "token0": tokens[0] if len(tokens) > 0 else {},
+                    "token1": tokens[1] if len(tokens) > 1 else {},
+                    "totalValueLockedToken0": balances[0] if len(balances) > 0 else "0",
+                    "totalValueLockedToken1": balances[1] if len(balances) > 1 else "0",
+                    "totalValueLockedUSD": pool.get("totalValueLockedUSD", "0"),
+                    "feeTier": str(int(fee_tier)),
+                    "liquidity": "0",  # Not directly available in Messari
+                }
+        else:
+            # Uniswap official schema
+            query = f"""
+            {{
+              pool(id: "{pool_id}") {{
+                id
+                token0 {{
+                  id
+                  symbol
+                  decimals
+                }}
+                token1 {{
+                  id
+                  symbol
+                  decimals
+                }}
+                totalValueLockedToken0
+                totalValueLockedToken1
+                totalValueLockedUSD
+                liquidity
+                feeTier
+              }}
+            }}
+            """
+            result = self.query_subgraph(query)
+            return result.get("data", {}).get("pool") if result else None
+
+    def get_all_positions(self, pool_address: str) -> List[dict]:
+        """Fetch all LP positions for a pool (paginated)."""
+        all_positions = []
+        skip = 0
+        batch_size = 1000
+        pool_id = pool_address.lower()
+
+        while True:
+            if self.schema_type == "messari":
+                query = f"""
+                {{
+                  positions(
+                    first: {batch_size}
+                    skip: {skip}
+                    where: {{pool: "{pool_id}", liquidity_gt: "0"}}
+                  ) {{
+                    id
+                    account {{ id }}
+                    liquidity
+                  }}
+                }}
+                """
+            else:
+                # Uniswap official schema
+                query = f"""
+                {{
+                  positions(
+                    first: {batch_size}
+                    skip: {skip}
+                    where: {{pool: "{pool_id}", liquidity_gt: "0"}}
+                  ) {{
+                    id
+                    owner
+                    liquidity
+                  }}
+                }}
+                """
+
+            result = self.query_subgraph(query)
+            if not result:
+                break
+
             positions = result.get("data", {}).get("positions", [])
-            
+
             if not positions:
                 break
-            
+
+            # Normalize owner field
+            for pos in positions:
+                if self.schema_type == "messari" and "account" in pos:
+                    pos["owner"] = pos["account"]["id"]
+                    del pos["account"]
+
             all_positions.extend(positions)
             skip += batch_size
-            
+
             print(f"  Fetched {len(all_positions)} positions...", end="\r")
-        
+
         print(f"  Total positions fetched: {len(all_positions)}")
         return all_positions
-    
+
     def calculate_metrics(self, positions: List[dict], pool_data: dict) -> dict:
-        """Calculate HHI, concentration, and holder metrics"""
+        """Calculate HHI, concentration, and holder metrics."""
         # Aggregate liquidity by owner
         owner_liquidity = defaultdict(float)
         for pos in positions:
             owner = pos["owner"]
             liquidity = float(pos["liquidity"])
             owner_liquidity[owner] += liquidity
-        
+
         # Calculate total liquidity and unique holders
         total_liquidity = sum(owner_liquidity.values())
         unique_holders = len(owner_liquidity)
-        
+
         # Sort owners by liquidity (descending)
         sorted_owners = sorted(
             owner_liquidity.items(),
             key=lambda x: x[1],
             reverse=True
         )
-        
+
         # Calculate market shares and HHI
         market_shares = []
         hhi = 0.0
-        
+
         for owner, liquidity in sorted_owners:
-            share_pct = (liquidity / total_liquidity) * 100
+            share_pct = (liquidity / total_liquidity) * 100 if total_liquidity > 0 else 0
             market_shares.append((owner, liquidity, share_pct))
             hhi += share_pct ** 2
-        
+
         # Top concentrations
         def get_top_concentration(n: int) -> float:
             return sum(share for _, _, share in market_shares[:n])
-        
+
         return {
             "unique_holders": unique_holders,
             "total_liquidity": total_liquidity,
@@ -141,11 +253,11 @@ class UniswapV3Analyzer:
             "top_10": get_top_concentration(10),
             "top_lps": market_shares[:10],
         }
-    
+
     def analyze_pool(self, pool_address: str) -> dict:
         """Complete pool analysis with formatted output. Returns dict with all metrics."""
         print(f"\n{'='*70}")
-        print(f"Uniswap V3 Pool Analysis - {self.network.upper()}")
+        print(f"Uniswap V3 Pool Analysis - {self.network.upper()} ({self.schema_type} schema)")
         print(f"{'='*70}")
         print(f"Pool Address: {pool_address}\n")
 
@@ -153,6 +265,7 @@ class UniswapV3Analyzer:
             "protocol": "Uniswap V3",
             "network": self.network,
             "pool_address": pool_address,
+            "schema_type": self.schema_type,
             "status": "error",
             "error": None
         }
@@ -167,32 +280,32 @@ class UniswapV3Analyzer:
             return result
 
         # Display pool info
-        token0 = pool_data["token0"]
-        token1 = pool_data["token1"]
+        token0 = pool_data.get("token0", {})
+        token1 = pool_data.get("token1", {})
 
-        result["pair"] = f"{token0['symbol']}/{token1['symbol']}"
-        result["fee_tier"] = int(pool_data['feeTier']) / 10000
-        result["tvl_usd"] = float(pool_data['totalValueLockedUSD'])
+        result["pair"] = f"{token0.get('symbol', '?')}/{token1.get('symbol', '?')}"
+        result["fee_tier"] = int(pool_data.get('feeTier', 0)) / 10000
+        result["tvl_usd"] = float(pool_data.get('totalValueLockedUSD', 0))
 
         print(f"\n📊 POOL INFO")
         print(f"{'─'*70}")
-        print(f"Pair: {token0['symbol']}/{token1['symbol']}")
-        print(f"Fee Tier: {int(pool_data['feeTier']) / 10000}%")
-        print(f"TVL (USD): ${float(pool_data['totalValueLockedUSD']):,.2f}")
+        print(f"Pair: {token0.get('symbol', '?')}/{token1.get('symbol', '?')}")
+        print(f"Fee Tier: {int(pool_data.get('feeTier', 0)) / 10000}%")
+        print(f"TVL (USD): ${float(pool_data.get('totalValueLockedUSD', 0)):,.2f}")
 
         # Token amounts
-        token0_amount = float(pool_data['totalValueLockedToken0'])
-        token1_amount = float(pool_data['totalValueLockedToken1'])
+        token0_amount = float(pool_data.get('totalValueLockedToken0', 0))
+        token1_amount = float(pool_data.get('totalValueLockedToken1', 0))
 
         result["token_amounts"] = [
-            {"symbol": token0['symbol'], "amount": token0_amount},
-            {"symbol": token1['symbol'], "amount": token1_amount}
+            {"symbol": token0.get('symbol', '?'), "amount": token0_amount},
+            {"symbol": token1.get('symbol', '?'), "amount": token1_amount}
         ]
 
         print(f"\n💰 TOKEN AMOUNTS")
         print(f"{'─'*70}")
-        print(f"{token0['symbol']}: {token0_amount:,.4f}")
-        print(f"{token1['symbol']}: {token1_amount:,.4f}")
+        print(f"{token0.get('symbol', '?')}: {token0_amount:,.4f}")
+        print(f"{token1.get('symbol', '?')}: {token1_amount:,.4f}")
 
         # Get positions
         print(f"\n🔍 Fetching LP positions...")

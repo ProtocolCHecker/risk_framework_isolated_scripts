@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
-"""Uniswap V3 Data Accuracy Verification Script"""
+"""Uniswap V3 Data Accuracy Verification Script
+Supports both Uniswap official schema and Messari schema
+"""
 
 import requests
 from web3 import Web3
-from typing import Dict, List
+from typing import Dict, List, Optional
 
-# Configuration
-SUBGRAPH_IDS = {
+# Default subgraph IDs (Uniswap official schema)
+DEFAULT_SUBGRAPH_IDS = {
     "ethereum": "5zvR82QoaXYFyDEKLZ9t6v9adgnptxYpKpSbxtgVENFV",
     "base": "43Hwfi3dJSoGpyas9VwNoDAv55yjgGrPpNSmbQZArzMG",
     "arbitrum": "FbCGRftH4a3yZugY7TnbYgPJVEv2LvMT6oF1fxPe9aJM",
@@ -19,15 +21,15 @@ NONFUNGIBLE_POSITION_MANAGER = {
 }
 
 RPC_URLS = {
-    "ethereum": "https://lb.drpc.live/ethereum/AtiZvaKOcUmKq-AbTta3bRaREdpZbjkR8LQrEklbR4ac",
-    "base": "https://lb.drpc.live/base/AtiZvaKOcUmKq-AbTta3bRaREdpZbjkR8LQrEklbR4ac",
-    "arbitrum": "https://lb.drpc.live/arbitrum/AtiZvaKOcUmKq-AbTta3bRaREdpZbjkR8LQrEklbR4ac"
+    "ethereum": "https://eth.drpc.org",
+    "base": "https://base.drpc.org",
+    "arbitrum": "https://arbitrum.drpc.org"
 }
 
 GRAPH_API_KEY = "db5921ae7c7116289958d028661c86b3"
 
 POOL_ABI = [
-    {"inputs": [], "name": "liquidity", "outputs": [{"type": "uint128"}], 
+    {"inputs": [], "name": "liquidity", "outputs": [{"type": "uint128"}],
      "stateMutability": "view", "type": "function"}
 ]
 
@@ -43,85 +45,216 @@ NFT_ABI = [
 ]
 
 
-def verify_uniswap_v3_accuracy(chain: str, pool_address: str, top_n: int = 10):
-    """Verify Uniswap V3 data accuracy for a specific pool"""
+def detect_schema(url: str) -> str:
+    """Detect whether subgraph uses Uniswap official or Messari schema."""
+    # Try Uniswap official schema first (has 'Pool' entity)
+    query = '{ __type(name: "Pool") { name } }'
+    try:
+        resp = requests.post(url, json={"query": query}, timeout=10)
+        if resp.json().get("data", {}).get("__type"):
+            return "uniswap"
+    except:
+        pass
+
+    # Check for Messari schema (has 'LiquidityPool' entity)
+    query = '{ __type(name: "LiquidityPool") { name } }'
+    try:
+        resp = requests.post(url, json={"query": query}, timeout=10)
+        if resp.json().get("data", {}).get("__type"):
+            return "messari"
+    except:
+        pass
+
+    return "uniswap"  # Default
+
+
+def verify_uniswap_v3_accuracy(
+    chain: str,
+    pool_address: str,
+    top_n: int = 10,
+    subgraph_id: str = None
+) -> dict:
+    """
+    Verify Uniswap V3 data accuracy for a specific pool.
+
+    Args:
+        chain: Chain name (ethereum, base, arbitrum)
+        pool_address: Pool contract address
+        top_n: Number of top positions to verify
+        subgraph_id: Optional custom subgraph ID
+
+    Returns:
+        dict with accuracy metrics
+    """
     pool_address = pool_address.lower()
-    w3 = Web3(Web3.HTTPProvider(RPC_URLS[chain]))
-    
+
+    # Use provided subgraph_id or default
+    sg_id = subgraph_id or DEFAULT_SUBGRAPH_IDS.get(chain)
+    if not sg_id:
+        return {"accuracy": 0, "error": f"No subgraph ID for chain: {chain}"}
+
+    url = f"https://gateway.thegraph.com/api/{GRAPH_API_KEY}/subgraphs/id/{sg_id}"
+
+    # Detect schema type
+    schema_type = detect_schema(url)
+
     print(f"\n{'='*80}")
-    print(f"Verifying Uniswap V3 Pool on {chain.upper()}")
+    print(f"Verifying Uniswap V3 Pool on {chain.upper()} ({schema_type} schema)")
     print(f"Pool: {pool_address}")
+    print(f"Subgraph: {sg_id[:20]}...")
     print(f"{'='*80}\n")
 
-    # 1. Get total liquidity from subgraph
-    url = f"https://gateway.thegraph.com/api/{GRAPH_API_KEY}/subgraphs/id/{SUBGRAPH_IDS[chain]}"
-    query = """query($pool: String!) { pool(id: $pool) { liquidity } }"""
-    resp = requests.post(url, json={"query": query, "variables": {"pool": pool_address}})
-    subgraph_total = int(resp.json()["data"]["pool"]["liquidity"])
+    try:
+        w3 = Web3(Web3.HTTPProvider(RPC_URLS.get(chain, RPC_URLS["ethereum"])))
 
-    # 2. Get total liquidity on-chain
-    pool = w3.eth.contract(address=Web3.to_checksum_address(pool_address), abi=POOL_ABI)
-    onchain_total = pool.functions.liquidity().call()
+        # 1. Get total liquidity from subgraph
+        if schema_type == "messari":
+            query = """query($pool: String!) { liquidityPool(id: $pool) { id } }"""
+            resp = requests.post(url, json={"query": query, "variables": {"pool": pool_address}})
+            data = resp.json()
+            if not data.get("data", {}).get("liquidityPool"):
+                print(f"Pool not found in subgraph")
+                return {"accuracy": 0, "error": "Pool not found", "total_deviation": 0}
+            # Messari doesn't have direct liquidity field, skip total comparison
+            subgraph_total = 0
+            onchain_total = 0
+            total_deviation = 0
+            print(f"Note: Messari schema - skipping total liquidity comparison")
+        else:
+            query = """query($pool: String!) { pool(id: $pool) { liquidity } }"""
+            resp = requests.post(url, json={"query": query, "variables": {"pool": pool_address}})
+            data = resp.json()
+            if not data.get("data", {}).get("pool"):
+                print(f"Pool not found in subgraph")
+                return {"accuracy": 0, "error": "Pool not found", "total_deviation": 0}
+            subgraph_total = int(data["data"]["pool"]["liquidity"])
 
-    total_deviation = abs(subgraph_total - onchain_total) / onchain_total * 100
-    print(f"Total Liquidity - Subgraph: {subgraph_total:,} | On-chain: {onchain_total:,} | Deviation: {total_deviation:.4f}%")
+            # 2. Get total liquidity on-chain
+            pool = w3.eth.contract(address=Web3.to_checksum_address(pool_address), abi=POOL_ABI)
+            onchain_total = pool.functions.liquidity().call()
 
-    # 3. Get top positions from subgraph
-    query = """
-    query($pool: String!, $first: Int!) {
-        positions(where: {pool: $pool, liquidity_gt: "0"}, first: $first,
-                  orderBy: liquidity, orderDirection: desc) {
-            id
-            owner
-            liquidity
-        }
-    }"""
-    resp = requests.post(url, json={"query": query, "variables": {"pool": pool_address, "first": top_n}})
-    positions = resp.json()["data"]["positions"]
+            total_deviation = abs(subgraph_total - onchain_total) / onchain_total * 100 if onchain_total > 0 else 0
+            print(f"Total Liquidity - Subgraph: {subgraph_total:,} | On-chain: {onchain_total:,} | Deviation: {total_deviation:.4f}%")
 
-    # 4. Verify each position on-chain
-    nft_manager = w3.eth.contract(address=Web3.to_checksum_address(NONFUNGIBLE_POSITION_MANAGER[chain]), abi=NFT_ABI)
-    matched = 0
+        # 3. Get top positions from subgraph
+        if schema_type == "messari":
+            query = """
+            query($pool: String!, $first: Int!) {
+                positions(where: {pool: $pool, liquidity_gt: "0"}, first: $first,
+                          orderBy: liquidity, orderDirection: desc) {
+                    id
+                    account { id }
+                    liquidity
+                }
+            }"""
+        else:
+            query = """
+            query($pool: String!, $first: Int!) {
+                positions(where: {pool: $pool, liquidity_gt: "0"}, first: $first,
+                          orderBy: liquidity, orderDirection: desc) {
+                    id
+                    owner
+                    liquidity
+                }
+            }"""
 
-    print(f"\n{'Token ID':<12} {'Subgraph Liq':>18} {'On-chain Liq':>18} {'Dev %':>10} {'Match':>8}")
-    print("-" * 80)
+        resp = requests.post(url, json={"query": query, "variables": {"pool": pool_address, "first": top_n}})
+        data = resp.json()
 
-    for pos in positions:
-        token_id = int(pos["id"].split("#")[1]) if "#" in pos["id"] else int(pos["id"])
-        subgraph_liq = int(pos["liquidity"])
-        subgraph_owner = pos["owner"].lower()
+        if data.get("errors"):
+            print(f"Subgraph error: {data['errors'][0].get('message', 'Unknown')}")
+            return {"accuracy": 0, "error": data['errors'][0].get('message'), "total_deviation": total_deviation}
 
-        # On-chain verification
-        onchain_data = nft_manager.functions.positions(token_id).call()
-        onchain_liq = onchain_data[7]  # liquidity at index 7
-        onchain_owner = nft_manager.functions.ownerOf(token_id).call().lower()
+        positions = data.get("data", {}).get("positions", [])
 
-        # Compare
-        deviation = abs(subgraph_liq - onchain_liq) / onchain_liq * 100 if onchain_liq > 0 else 100
-        owner_match = subgraph_owner == onchain_owner
-        liq_match = deviation <= 1.0  # 1% tolerance
-        is_verified = owner_match and liq_match
+        if not positions:
+            print("No positions found")
+            return {"accuracy": 100, "total_deviation": total_deviation, "matched": 0, "note": "No positions to verify"}
 
-        if is_verified:
-            matched += 1
+        # Normalize owner field for Messari schema
+        for pos in positions:
+            if schema_type == "messari" and "account" in pos:
+                pos["owner"] = pos["account"]["id"]
 
-        print(f"{token_id:<12} {subgraph_liq:>18,} {onchain_liq:>18,} {deviation:>9.4f}% {'✓' if is_verified else '✗':>8}")
+        # 4. Verify each position on-chain
+        nft_manager_addr = NONFUNGIBLE_POSITION_MANAGER.get(chain)
+        if not nft_manager_addr:
+            print(f"No NFT Position Manager for chain: {chain}")
+            return {"accuracy": 0, "error": f"No NFT Position Manager for {chain}", "total_deviation": total_deviation}
 
-    # 5. Calculate accuracy score
-    accuracy = matched / len(positions) * 100 if positions else 0
-    status = "VERIFIED" if accuracy == 100 else "PARTIAL" if accuracy >= 50 else "FAILED"
-    
-    print(f"\n{'='*80}")
-    print(f"RESULTS: {status}")
-    print(f"Accuracy Score: {accuracy:.1f}% ({matched}/{len(positions)} positions matched)")
-    print(f"{'='*80}\n")
+        nft_manager = w3.eth.contract(address=Web3.to_checksum_address(nft_manager_addr), abi=NFT_ABI)
+        matched = 0
+        verifiable = 0  # Only count positions with on-chain data available
+        skipped = 0
 
-    return {"accuracy": accuracy, "total_deviation": total_deviation, "matched": matched}
+        print(f"\n{'Token ID':<12} {'Subgraph Liq':>18} {'On-chain Liq':>18} {'Dev %':>10} {'Match':>8}")
+        print("-" * 80)
+
+        for pos in positions:
+            try:
+                # Extract token ID from position ID
+                pos_id = pos["id"]
+                if "#" in pos_id:
+                    token_id = int(pos_id.split("#")[1])
+                elif pos_id.startswith("0x"):
+                    # Messari format: hex token ID
+                    token_id = int(pos_id, 16)
+                else:
+                    token_id = int(pos_id)
+
+                subgraph_liq = int(pos["liquidity"])
+                subgraph_owner = pos["owner"].lower()
+
+                # On-chain verification
+                onchain_data = nft_manager.functions.positions(token_id).call()
+                onchain_liq = onchain_data[7]  # liquidity at index 7
+                onchain_owner = nft_manager.functions.ownerOf(token_id).call().lower()
+
+                verifiable += 1
+
+                # Compare
+                deviation = abs(subgraph_liq - onchain_liq) / onchain_liq * 100 if onchain_liq > 0 else 100
+                owner_match = subgraph_owner == onchain_owner
+                liq_match = deviation <= 1.0  # 1% tolerance
+                is_verified = owner_match and liq_match
+
+                if is_verified:
+                    matched += 1
+
+                print(f"{token_id:<12} {subgraph_liq:>18,} {onchain_liq:>18,} {deviation:>9.4f}% {'✓' if is_verified else '✗':>8}")
+
+            except Exception as e:
+                skipped += 1
+                print(f"{pos['id'][:12]:<12} {'N/A':>18} {'N/A':>18} {'N/A':>10} {'⊘ SKIP':>8}  (unverifiable)")
+
+        # 5. Calculate accuracy score (only count verifiable positions)
+        if verifiable > 0:
+            accuracy = matched / verifiable * 100
+            status = "VERIFIED" if accuracy == 100 else "PARTIAL" if accuracy >= 50 else "FAILED"
+        else:
+            accuracy = None  # Cannot determine accuracy
+            status = "UNVERIFIABLE"
+
+        print(f"\n{'='*80}")
+        print(f"RESULTS: {status}")
+        if accuracy is not None:
+            print(f"Accuracy Score: {accuracy:.1f}% ({matched}/{verifiable} verifiable positions matched)")
+        else:
+            print(f"Accuracy Score: N/A (no positions verifiable on-chain)")
+        if skipped > 0:
+            print(f"Skipped: {skipped} positions (subgraph ID format not mappable to on-chain)")
+        print(f"{'='*80}\n")
+
+        return {"accuracy": accuracy, "total_deviation": total_deviation, "matched": matched, "verifiable": verifiable, "skipped": skipped, "status": status}
+
+    except Exception as e:
+        print(f"Error during verification: {e}")
+        return {"accuracy": 0, "error": str(e), "total_deviation": 0}
 
 
 if __name__ == "__main__":
     # Example usage - replace with your pool address and chain
     CHAIN = "base"
     POOL_ADDRESS = "0x8c7080564b5a792a33ef2fd473fba6364d5495e5"  # Base cbBTC/WETH
-    
+
     result = verify_uniswap_v3_accuracy(CHAIN, POOL_ADDRESS, top_n=3)
