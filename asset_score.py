@@ -474,8 +474,7 @@ def calculate_market_score(
 def calculate_liquidity_score(
     slippage_100k_pct: float,
     slippage_500k_pct: float,
-    hhi: float,
-    chain_distribution: dict
+    hhi: float
 ) -> Dict[str, Any]:
     """
     Calculate Liquidity Risk score.
@@ -484,11 +483,10 @@ def calculate_liquidity_score(
         slippage_100k_pct: Slippage for $100K trade
         slippage_500k_pct: Slippage for $500K trade
         hhi: Herfindahl-Hirschman Index (0-10000)
-        chain_distribution: Dict of chain -> supply percentage
     """
     breakdown = {}
 
-    # 1. Slippage at $100K (30%)
+    # 1. Slippage at $100K (40%)
     slip_100k_thresholds = LIQUIDITY_THRESHOLDS["slippage_100k"]["thresholds"]
     slip_100k_score, slip_100k_just = interpolate_score(slippage_100k_pct, slip_100k_thresholds, "slippage_pct")
 
@@ -499,7 +497,7 @@ def calculate_liquidity_score(
         "value": slippage_100k_pct,
     }
 
-    # 2. Slippage at $500K (25%)
+    # 2. Slippage at $500K (30%)
     slip_500k_thresholds = LIQUIDITY_THRESHOLDS["slippage_500k"]["thresholds"]
     slip_500k_score, slip_500k_just = interpolate_score(slippage_500k_pct, slip_500k_thresholds, "slippage_pct")
 
@@ -510,7 +508,7 @@ def calculate_liquidity_score(
         "value": slippage_500k_pct,
     }
 
-    # 3. HHI Concentration (25%)
+    # 3. HHI Concentration (30%)
     hhi_thresholds = LIQUIDITY_THRESHOLDS["hhi_concentration"]["thresholds"]
     hhi_score, hhi_just = interpolate_score(hhi, hhi_thresholds, "hhi")
 
@@ -519,34 +517,6 @@ def calculate_liquidity_score(
         "weight": LIQUIDITY_THRESHOLDS["hhi_concentration"]["weight"],
         "justification": f"HHI: {hhi:.0f}. {hhi_just}",
         "value": hhi,
-    }
-
-    # 4. Cross-chain Distribution (20%)
-    if chain_distribution:
-        max_chain_pct = max(chain_distribution.values()) if chain_distribution else 100
-        num_chains = len([c for c, pct in chain_distribution.items() if pct > 1])
-
-        if max_chain_pct <= 60 and num_chains >= 3:
-            dist_score = 100
-            dist_just = f"Well distributed across {num_chains} chains (max {max_chain_pct:.1f}%)"
-        elif max_chain_pct <= 75:
-            dist_score = 75
-            dist_just = f"Moderate distribution (max chain: {max_chain_pct:.1f}%)"
-        elif max_chain_pct <= 90:
-            dist_score = 50
-            dist_just = f"Concentrated on one chain ({max_chain_pct:.1f}%)"
-        else:
-            dist_score = 30
-            dist_just = f"Single chain dominance ({max_chain_pct:.1f}%)"
-    else:
-        dist_score = 30
-        dist_just = "No cross-chain distribution data"
-
-    breakdown["distribution"] = {
-        "score": dist_score,
-        "weight": LIQUIDITY_THRESHOLDS["cross_chain_distribution"]["weight"],
-        "justification": dist_just,
-        "chains": chain_distribution,
     }
 
     total_score = sum(
@@ -744,7 +714,6 @@ def calculate_category_scores(metrics: dict) -> Dict[str, Any]:
         slippage_100k_pct=metrics.get("slippage_100k_pct", 0.5),
         slippage_500k_pct=metrics.get("slippage_500k_pct", 1.0),
         hhi=metrics.get("hhi", 2000),
-        chain_distribution=metrics.get("chain_distribution", {}),
     )
 
     # Collateral

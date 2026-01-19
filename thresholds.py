@@ -358,7 +358,7 @@ MARKET_THRESHOLDS = {
 
 LIQUIDITY_THRESHOLDS = {
     "slippage_100k": {
-        "weight": 0.30,
+        "weight": 0.40,
         "description": "Price impact for $100K trade",
         "thresholds": [
             {"slippage_pct": 0.1, "score": 100, "justification": "< 0.1% slippage at $100K is excellent depth."},
@@ -370,7 +370,7 @@ LIQUIDITY_THRESHOLDS = {
         ],
     },
     "slippage_500k": {
-        "weight": 0.25,
+        "weight": 0.30,
         "description": "Price impact for $500K trade",
         "thresholds": [
             {"slippage_pct": 0.5, "score": 100, "justification": "< 0.5% at $500K indicates deep institutional liquidity."},
@@ -381,7 +381,7 @@ LIQUIDITY_THRESHOLDS = {
         ],
     },
     "hhi_concentration": {
-        "weight": 0.25,
+        "weight": 0.30,
         "description": "Herfindahl-Hirschman Index for LP concentration (0-10000)",
         "thresholds": [
             {"hhi": 1000, "score": 100, "justification": "HHI < 1000 is unconcentrated market. DOJ/FTC standard."},
@@ -392,32 +392,6 @@ LIQUIDITY_THRESHOLDS = {
             {"hhi": 10000, "score": 5, "justification": "HHI approaching 10000 is monopoly. Single LP controls pool."},
         ],
         "scoring_formula": "Score = max(0, 100 - (HHI / 100))",
-    },
-    "cross_chain_distribution": {
-        "weight": 0.20,
-        "description": "Distribution of supply across chains",
-        "thresholds": [
-            {
-                "condition": "Well distributed (no chain > 60%, 3+ chains)",
-                "score": 100,
-                "justification": "Diversified cross-chain presence reduces single-chain risk."
-            },
-            {
-                "condition": "Moderate distribution (one chain 60-75%)",
-                "score": 75,
-                "justification": "Some concentration but multiple venues available."
-            },
-            {
-                "condition": "Concentrated (one chain > 75%)",
-                "score": 50,
-                "justification": "Heavy reliance on single chain. Bridge/chain risk concentrated."
-            },
-            {
-                "condition": "Single chain only",
-                "score": 30,
-                "justification": "All liquidity on one chain. No alternatives if chain issues arise."
-            },
-        ],
     },
 }
 
