@@ -188,8 +188,8 @@ def fetch_price_data(config: dict) -> dict:
         underlying_id = price_risk.get("underlying_coingecko_id")
 
         if token_id and underlying_id:
-            _, token_prices = get_coingecko_data(token_id, days=30)
-            _, underlying_prices = get_coingecko_data(underlying_id, days=30)
+            _, token_prices = get_coingecko_data(token_id, days=365)
+            _, underlying_prices = get_coingecko_data(underlying_id, days=365)
 
             if token_prices and underlying_prices:
                 result["token_price"] = token_prices[-1]
