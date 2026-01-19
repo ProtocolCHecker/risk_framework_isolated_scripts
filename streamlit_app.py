@@ -356,7 +356,7 @@ def fetch_token_distribution(config: dict) -> dict:
 
 
 def fetch_lending_data(config: dict) -> dict:
-    """Fetch lending protocol data (AAVE + Compound)."""
+    """Fetch lending protocol data (AAVE + Compound) with TVL-weighted aggregation."""
     result = {"aave": [], "compound": [], "aggregated": {}, "error": None}
 
     lending_configs = config.get("lending_configs", [])
@@ -364,9 +364,10 @@ def fetch_lending_data(config: dict) -> dict:
         result["error"] = "No lending configurations"
         return result
 
-    all_rlr = []
-    all_clr = []
-    all_utilization = []
+    # Collect (value, tvl) tuples for TVL-weighted averaging
+    rlr_data = []  # [(rlr_pct, tvl), ...]
+    clr_data = []  # [(clr_pct, tvl), ...]
+    util_data = []  # [(util_pct, tvl), ...]
 
     # Track processed chains to avoid duplicates
     processed_aave_chains = set()
@@ -388,20 +389,22 @@ def fetch_lending_data(config: dict) -> dict:
                 result["aave"].append(market_result)
 
                 if market_result.get("status") == "success":
+                    overview = market_result.get("market_overview", {})
+                    tvl = overview.get("total_supply", 0)
+
                     rlr = market_result.get("rlr", {})
-                    if rlr.get("rlr_supply_based"):
-                        all_rlr.append(rlr["rlr_supply_based"])
+                    if rlr.get("rlr_supply_based") is not None and tvl > 0:
+                        rlr_data.append((rlr["rlr_supply_based"], tvl))
 
                     clr = market_result.get("clr", {})
-                    if clr.get("clr_by_value"):
-                        all_clr.append(clr["clr_by_value"])
+                    if clr.get("clr_by_value") is not None and tvl > 0:
+                        clr_data.append((clr["clr_by_value"], tvl))
 
-                    overview = market_result.get("market_overview", {})
-                    if overview.get("utilization_rate"):
-                        all_utilization.append(overview["utilization_rate"])
+                    if overview.get("utilization_rate") is not None and tvl > 0:
+                        util_data.append((overview["utilization_rate"], tvl))
 
             elif protocol == "compound" and chain in COMPOUND_MARKETS:
-                # Only process each Compound chain once (analyze_compound_market returns all markets for a chain)
+                # Only process each Compound chain once
                 if chain in processed_compound_chains:
                     continue
                 processed_compound_chains.add(chain)
@@ -412,18 +415,30 @@ def fetch_lending_data(config: dict) -> dict:
                 if market_result.get("status") == "success":
                     for market in market_result.get("markets", []):
                         if market.get("supported"):
+                            tvl = market.get("total_supply", 0)
+
                             clr = market.get("clr", {})
-                            if clr.get("clr_by_value"):
-                                all_clr.append(clr["clr_by_value"])
+                            if clr.get("clr_by_value") is not None and tvl > 0:
+                                clr_data.append((clr["clr_by_value"], tvl))
         except Exception as e:
             continue
 
-    if all_rlr:
-        result["aggregated"]["rlr_pct"] = max(all_rlr)
-    if all_clr:
-        result["aggregated"]["clr_pct"] = max(all_clr)
-    if all_utilization:
-        result["aggregated"]["utilization_pct"] = sum(all_utilization) / len(all_utilization)
+    # Calculate TVL-weighted averages
+    def weighted_avg(data):
+        """Calculate TVL-weighted average from [(value, tvl), ...] pairs."""
+        if not data:
+            return None
+        total_tvl = sum(tvl for _, tvl in data)
+        if total_tvl == 0:
+            return None
+        return sum(value * tvl for value, tvl in data) / total_tvl
+
+    if rlr_data:
+        result["aggregated"]["rlr_pct"] = weighted_avg(rlr_data)
+    if clr_data:
+        result["aggregated"]["clr_pct"] = weighted_avg(clr_data)
+    if util_data:
+        result["aggregated"]["utilization_pct"] = weighted_avg(util_data)
 
     return result
 
