@@ -1172,228 +1172,116 @@ def render_tab_protocol_info():
         st.info("Load a configuration first.")
         return
 
-    # ==========================================================================
-    # ASSET OVERVIEW CARD
-    # ==========================================================================
-    st.markdown("""
-    <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-                padding: 25px; border-radius: 15px; margin-bottom: 20px;">
-        <h2 style="color: white; margin: 0;">""" + config.get('asset_name', 'Unknown Asset') + """</h2>
-        <p style="color: rgba(255,255,255,0.8); margin: 5px 0 0 0; font-size: 1.1em;">
-            """ + config.get('asset_symbol', 'N/A') + """ • """ + config.get('asset_type', 'N/A').replace('_', ' ').title() + """
-        </p>
-    </div>
-    """, unsafe_allow_html=True)
-
-    # Key metrics row
-    col1, col2, col3, col4 = st.columns(4)
-
+    # Protocol Age
+    st.subheader("Protocol Age")
     deployment = config.get("deployment_date")
-    days = days_since(deployment) if deployment else None
-
-    with col1:
-        st.metric("🗓️ Days Live", days if days else "N/A", help=f"Deployed: {deployment}" if deployment else "Unknown")
-    with col2:
-        st.metric("🔢 Decimals", config.get('token_decimals', 'N/A'))
-    with col3:
-        st.metric("📦 Underlying", config.get('underlying', 'N/A'))
-    with col4:
-        audit = config.get("audit_data", {})
-        auditor = audit.get('auditor', 'None')
-        st.metric("🔍 Auditor", auditor[:12] + "..." if len(auditor) > 12 else auditor)
+    if deployment:
+        days = days_since(deployment)
+        st.metric("Days Since Launch", days if days else "N/A")
+        st.caption(f"Deployment Date: {deployment}")
+    else:
+        st.caption("Deployment date not specified")
 
     st.divider()
 
-    # ==========================================================================
-    # SECURITY SECTION
-    # ==========================================================================
-    st.subheader("🔒 Security Overview")
-
+    # Security
+    st.subheader("Security")
     col1, col2 = st.columns(2)
 
     with col1:
-        # Audit Card
-        audit = config.get("audit_data", {})
+        audit = config.get("audit_data")
         if audit:
+            st.markdown("**Audit Information**")
+            st.markdown(f"- Auditor: **{audit.get('auditor', 'N/A')}**")
+            st.markdown(f"- Date: {audit.get('date', 'N/A')}")
             issues = audit.get("issues", {})
-            total_issues = sum(issues.values()) if issues else 0
-            all_resolved = audit.get("all_issues_resolved", False)
-
-            # Determine audit status color
-            if total_issues == 0 or all_resolved:
-                status_color = "#22c55e"
-                status_text = "Clean"
-            elif issues.get("critical", 0) > 0 or issues.get("high", 0) > 0:
-                status_color = "#ef4444"
-                status_text = "Issues Found"
-            else:
-                status_color = "#eab308"
-                status_text = "Minor Issues"
-
-            st.markdown(f"""
-            <div style="background: #1e1e2e; border-radius: 10px; padding: 20px; border-left: 4px solid {status_color};">
-                <div style="display: flex; justify-content: space-between; align-items: center;">
-                    <h4 style="margin: 0; color: white;">🛡️ Audit Report</h4>
-                    <span style="background: {status_color}; color: white; padding: 3px 10px; border-radius: 12px; font-size: 0.8em;">{status_text}</span>
-                </div>
-                <table style="width: 100%; margin-top: 15px; color: #a0a0a0;">
-                    <tr><td>Auditor</td><td style="text-align: right; color: white;"><strong>{audit.get('auditor', 'N/A')}</strong></td></tr>
-                    <tr><td>Date</td><td style="text-align: right; color: white;">{audit.get('date', 'N/A')}</td></tr>
-                    <tr><td>Critical Issues</td><td style="text-align: right; color: {'#ef4444' if issues.get('critical', 0) > 0 else '#22c55e'};">{issues.get('critical', 0)}</td></tr>
-                    <tr><td>High Issues</td><td style="text-align: right; color: {'#f97316' if issues.get('high', 0) > 0 else '#22c55e'};">{issues.get('high', 0)}</td></tr>
-                    <tr><td>Medium Issues</td><td style="text-align: right; color: {'#eab308' if issues.get('medium', 0) > 0 else '#22c55e'};">{issues.get('medium', 0)}</td></tr>
-                    <tr><td>Low Issues</td><td style="text-align: right; color: white;">{issues.get('low', 0)}</td></tr>
-                </table>
-            </div>
-            """, unsafe_allow_html=True)
+            st.markdown(f"- Critical Issues: {issues.get('critical', 0)}")
+            st.markdown(f"- High Issues: {issues.get('high', 0)}")
+            st.markdown(f"- Medium Issues: {issues.get('medium', 0)}")
+            st.markdown(f"- Low Issues: {issues.get('low', 0)}")
         else:
-            st.warning("⚠️ No audit data available")
+            st.warning("No audit data available")
 
     with col2:
-        # Incident History Card
         incidents = config.get("incidents", [])
-        incident_color = "#22c55e" if not incidents else "#ef4444"
-
-        st.markdown(f"""
-        <div style="background: #1e1e2e; border-radius: 10px; padding: 20px; border-left: 4px solid {incident_color};">
-            <div style="display: flex; justify-content: space-between; align-items: center;">
-                <h4 style="margin: 0; color: white;">📋 Incident History</h4>
-                <span style="background: {incident_color}; color: white; padding: 3px 10px; border-radius: 12px; font-size: 0.8em;">
-                    {len(incidents)} Incident{'s' if len(incidents) != 1 else ''}
-                </span>
-            </div>
-            <div style="margin-top: 15px; color: #a0a0a0;">
-                {''.join([f'<p style="margin: 5px 0; padding: 8px; background: #2a2a3e; border-radius: 5px;">⚠️ {inc.get("description", "Unknown")}</p>' for inc in incidents]) if incidents else '<p style="color: #22c55e;">✅ No security incidents recorded</p>'}
-            </div>
-        </div>
-        """, unsafe_allow_html=True)
+        st.markdown("**Incident History**")
+        if incidents:
+            for inc in incidents:
+                st.markdown(f"- {inc.get('description', 'Unknown incident')}")
+        else:
+            st.success("No security incidents recorded")
 
     st.divider()
 
-    # ==========================================================================
-    # GOVERNANCE & CUSTODY
-    # ==========================================================================
-    st.subheader("🏦 Governance & Custody")
+    # Token Details
+    st.subheader("Token Details")
+    col1, col2 = st.columns(2)
+    with col1:
+        st.markdown(f"- **Symbol**: {config.get('asset_symbol', 'N/A')}")
+        st.markdown(f"- **Type**: {config.get('asset_type', 'N/A')}")
+        st.markdown(f"- **Decimals**: {config.get('token_decimals', 'N/A')}")
+    with col2:
+        st.markdown(f"- **Underlying**: {config.get('underlying', 'N/A')}")
+        price_risk = config.get("price_risk", {})
+        st.markdown(f"- **CoinGecko ID**: {price_risk.get('token_coingecko_id', 'N/A')}")
 
+    st.divider()
+
+    # Governance & Custody
+    st.subheader("Governance & Custody")
     col1, col2 = st.columns(2)
 
     with col1:
-        custody_model = config.get('custody_model', 'unknown').replace('_', ' ').title()
-        has_insurance = config.get('has_insurance', False)
-
-        st.markdown(f"""
-        <div style="background: #1e1e2e; border-radius: 10px; padding: 20px;">
-            <h4 style="margin: 0 0 15px 0; color: white;">🔐 Custody Model</h4>
-            <div style="background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
-                        padding: 15px; border-radius: 8px; text-align: center; margin-bottom: 15px;">
-                <span style="color: white; font-size: 1.2em; font-weight: bold;">{custody_model}</span>
-            </div>
-            <table style="width: 100%; color: #a0a0a0;">
-                <tr><td>Custodian</td><td style="text-align: right; color: white;">{config.get('custodian', 'N/A')}</td></tr>
-                <tr><td>Insurance</td><td style="text-align: right; color: {'#22c55e' if has_insurance else '#ef4444'};">{'✅ Yes' if has_insurance else '❌ No'}</td></tr>
-                <tr><td>Provider</td><td style="text-align: right; color: white;">{config.get('insurance_provider', 'N/A') if has_insurance else '-'}</td></tr>
-            </table>
-        </div>
-        """, unsafe_allow_html=True)
+        st.markdown("**Custody**")
+        st.markdown(f"- Model: **{config.get('custody_model', 'unknown').replace('_', ' ').title()}**")
+        st.markdown(f"- Custodian: {config.get('custodian', 'N/A')}")
+        st.markdown(f"- Has Insurance: {'Yes' if config.get('has_insurance') else 'No'}")
 
     with col2:
-        has_timelock = config.get('has_timelock', False)
-        timelock_hours = config.get('timelock_hours', 0)
-        has_blacklist = config.get('has_blacklist', False)
-        blacklist_control = config.get('blacklist_control', 'none')
+        st.markdown("**Security Features**")
+        st.markdown(f"- Timelock: {'Yes' if config.get('has_timelock') else 'No'} ({config.get('timelock_hours', 0)}h)")
+        st.markdown(f"- Blacklist: {'Yes' if config.get('has_blacklist') else 'No'} ({config.get('blacklist_control', 'none')})")
 
-        st.markdown(f"""
-        <div style="background: #1e1e2e; border-radius: 10px; padding: 20px;">
-            <h4 style="margin: 0 0 15px 0; color: white;">⚙️ Security Features</h4>
-            <div style="display: flex; gap: 10px; margin-bottom: 15px;">
-                <div style="flex: 1; background: {'#22c55e20' if has_timelock else '#ef444420'};
-                            border: 1px solid {'#22c55e' if has_timelock else '#ef4444'};
-                            padding: 10px; border-radius: 8px; text-align: center;">
-                    <div style="color: {'#22c55e' if has_timelock else '#ef4444'}; font-size: 1.5em;">{'⏱️' if has_timelock else '⚡'}</div>
-                    <div style="color: white; font-size: 0.9em;">Timelock</div>
-                    <div style="color: {'#22c55e' if has_timelock else '#ef4444'}; font-weight: bold;">{f'{timelock_hours}h' if has_timelock else 'None'}</div>
-                </div>
-                <div style="flex: 1; background: {'#eab30820' if has_blacklist else '#22c55e20'};
-                            border: 1px solid {'#eab308' if has_blacklist else '#22c55e'};
-                            padding: 10px; border-radius: 8px; text-align: center;">
-                    <div style="color: {'#eab308' if has_blacklist else '#22c55e'}; font-size: 1.5em;">{'🚫' if has_blacklist else '✅'}</div>
-                    <div style="color: white; font-size: 0.9em;">Blacklist</div>
-                    <div style="color: {'#eab308' if has_blacklist else '#22c55e'}; font-weight: bold;">{blacklist_control.upper() if has_blacklist else 'None'}</div>
-                </div>
-            </div>
-        </div>
-        """, unsafe_allow_html=True)
-
-    # Admin Roles Table
-    st.markdown("##### 👥 Admin Roles")
+    # Admin Roles
+    st.markdown("**Admin Roles**")
     multisig_configs = config.get("multisig_configs", [])
     if multisig_configs:
-        roles_data = []
-        for cfg in multisig_configs:
-            is_multisig = cfg.get("is_multisig", False)
-            is_eoa = cfg.get("is_eoa", False)
-
-            if is_multisig:
-                type_badge = "🔒 Multisig"
-                type_color = "#22c55e"
-            elif is_eoa:
-                type_badge = "⚠️ EOA"
-                type_color = "#ef4444"
-            else:
-                type_badge = "❓ Unknown"
-                type_color = "#6b7280"
-
-            roles_data.append({
-                "Role": cfg.get("role_name", "N/A").title(),
-                "Address": cfg.get("address", "N/A")[:16] + "..." if cfg.get("address") else "N/A",
-                "Type": type_badge,
-                "Threshold": f"{cfg.get('threshold', 1)}/{cfg.get('owners_count', 1)}" if is_multisig else "1/1"
-            })
-
-        df = pd.DataFrame(roles_data)
+        df = pd.DataFrame([
+            {
+                "Role": cfg.get("role_name", "N/A"),
+                "Address": cfg.get("address", "N/A")[:10] + "..." if cfg.get("address") else "N/A",
+                "Type": "Multisig" if cfg.get("is_multisig") else ("EOA" if cfg.get("is_eoa") else "Unknown"),
+                "Threshold": f"{cfg.get('threshold', 1)}/{cfg.get('owners_count', 1)}" if cfg.get("is_multisig") else "N/A"
+            }
+            for cfg in multisig_configs
+        ])
         st.dataframe(df, use_container_width=True, hide_index=True)
     else:
         st.caption("No admin roles configured")
 
     st.divider()
 
-    # ==========================================================================
-    # ORACLE CONFIGURATION
-    # ==========================================================================
-    st.subheader("🔮 Oracle Configuration")
-
+    # Oracle Feeds
+    st.subheader("Oracle Feeds")
     col1, col2 = st.columns(2)
 
     with col1:
-        st.markdown("##### Price Feeds")
+        st.markdown("**Price Feeds**")
         oracle_freshness = config.get("oracle_freshness", {})
         feeds = oracle_freshness.get("price_feeds", [])
         if feeds:
             for feed in feeds:
-                addr = feed.get('address', 'N/A')
-                st.markdown(f"""
-                <div style="background: #1e1e2e; padding: 10px 15px; border-radius: 8px; margin-bottom: 8px;">
-                    <div style="color: white; font-weight: bold;">{feed.get('name', 'Unknown')}</div>
-                    <div style="color: #6b7280; font-size: 0.85em;">{feed.get('chain', '').title()} • <code>{addr[:20]}...</code></div>
-                </div>
-                """, unsafe_allow_html=True)
+                st.markdown(f"- {feed.get('name', feed.get('chain', 'Unknown'))}: `{feed.get('address', 'N/A')[:20]}...`")
         else:
             st.caption("No price feeds configured")
 
     with col2:
-        st.markdown("##### Proof of Reserve Feeds")
+        st.markdown("**Proof of Reserve Feeds**")
         por = config.get("proof_of_reserve", {})
         chains = por.get("evm_chains", [])
         if chains:
             for chain in chains:
-                por_addr = chain.get('por', 'N/A')
-                if por_addr and por_addr != 'N/A':
-                    st.markdown(f"""
-                    <div style="background: #1e1e2e; padding: 10px 15px; border-radius: 8px; margin-bottom: 8px;">
-                        <div style="color: white; font-weight: bold;">{chain.get('name', 'Unknown').title()}</div>
-                        <div style="color: #6b7280; font-size: 0.85em;"><code>{por_addr[:20]}...</code></div>
-                    </div>
-                    """, unsafe_allow_html=True)
+                st.markdown(f"- {chain.get('name', 'Unknown').title()}: `{chain.get('por', 'N/A')[:20]}...`")
         else:
             st.caption("No PoR feeds configured")
 
@@ -2275,109 +2163,46 @@ def render_tab_risk_metrics():
         st.info("Load a configuration first.")
         return
 
-    # ==========================================================================
-    # PROOF OF RESERVES & PRICE RISK CARDS
-    # ==========================================================================
     col1, col2 = st.columns(2)
 
     with col1:
+        st.subheader("Proof of Reserves")
         por = fetched.get("proof_of_reserve") or {}
+
         reserve_ratio = por.get("reserve_ratio", 1.0)
-        reserves = por.get("reserves", 0)
-        total_supply = por.get("total_supply", 0)
+        st.metric("Reserve Ratio", format_percentage(reserve_ratio * 100))
 
-        # Determine status
         if reserve_ratio >= 1.0:
-            status_color = "#22c55e"
-            status_text = "Fully Backed"
-            status_icon = "✅"
-        elif reserve_ratio >= 0.98:
-            status_color = "#eab308"
-            status_text = "Minor Shortfall"
-            status_icon = "⚠️"
+            st.success("✅ Fully Backed")
         else:
-            status_color = "#ef4444"
-            status_text = "Under-collateralized"
-            status_icon = "🚨"
+            st.error("⚠️ Under-collateralized")
 
-        st.markdown(f"""
-        <div style="background: #1e1e2e; border-radius: 12px; padding: 20px; border-left: 4px solid {status_color};">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
-                <h3 style="margin: 0; color: white;">🏦 Proof of Reserves</h3>
-                <span style="background: {status_color}; color: white; padding: 5px 12px; border-radius: 20px; font-size: 0.85em;">
-                    {status_icon} {status_text}
-                </span>
-            </div>
-            <div style="text-align: center; padding: 20px 0;">
-                <div style="font-size: 3em; font-weight: bold; color: {status_color};">{reserve_ratio * 100:.2f}%</div>
-                <div style="color: #6b7280; margin-top: 5px;">Reserve Ratio</div>
-            </div>
-            <div style="display: flex; justify-content: space-around; margin-top: 15px; padding-top: 15px; border-top: 1px solid #2a2a3e;">
-                <div style="text-align: center;">
-                    <div style="color: #6b7280; font-size: 0.85em;">Reserves</div>
-                    <div style="color: white; font-weight: bold;">{format_number(reserves, 2) if reserves else 'N/A'}</div>
-                </div>
-                <div style="text-align: center;">
-                    <div style="color: #6b7280; font-size: 0.85em;">Total Supply</div>
-                    <div style="color: white; font-weight: bold;">{format_number(total_supply, 2) if total_supply else 'N/A'}</div>
-                </div>
-            </div>
-        </div>
-        """, unsafe_allow_html=True)
+        if por.get("reserves"):
+            st.metric("Reserves", format_number(por["reserves"], 4))
+        if por.get("total_supply"):
+            st.metric("Total Supply", format_number(por["total_supply"], 4))
 
     with col2:
+        st.subheader("Price Risk")
         price = fetched.get("price_risk") or {}
-        volatility = price.get("volatility", 0)
-        var_95 = price.get("var_95", 0)
-        var_99 = price.get("var_99", 0)
-        cvar_95 = price.get("cvar_95", 0)
-        cvar_99 = price.get("cvar_99", 0)
 
-        # Determine volatility status
-        if volatility < 30:
-            vol_color = "#22c55e"
-        elif volatility < 60:
-            vol_color = "#eab308"
-        else:
-            vol_color = "#ef4444"
+        if price.get("volatility"):
+            st.metric("Annualized Volatility", format_percentage(price["volatility"]))
 
-        st.markdown(f"""
-        <div style="background: #1e1e2e; border-radius: 12px; padding: 20px; border-left: 4px solid {vol_color};">
-            <h3 style="margin: 0 0 15px 0; color: white;">📊 Price Risk</h3>
-            <div style="text-align: center; padding: 15px 0;">
-                <div style="font-size: 2.5em; font-weight: bold; color: {vol_color};">{volatility:.2f}%</div>
-                <div style="color: #6b7280; margin-top: 5px;">Annualized Volatility</div>
-            </div>
-            <div style="margin-top: 15px; padding-top: 15px; border-top: 1px solid #2a2a3e;">
-                <div style="color: #6b7280; font-size: 0.9em; margin-bottom: 10px;">Value at Risk (Daily)</div>
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
-                    <div style="background: #2a2a3e; padding: 10px; border-radius: 8px; text-align: center;">
-                        <div style="color: #6b7280; font-size: 0.8em;">VaR 95%</div>
-                        <div style="color: #f97316; font-weight: bold;">{var_95:.2f}%</div>
-                    </div>
-                    <div style="background: #2a2a3e; padding: 10px; border-radius: 8px; text-align: center;">
-                        <div style="color: #6b7280; font-size: 0.8em;">VaR 99%</div>
-                        <div style="color: #ef4444; font-weight: bold;">{var_99:.2f}%</div>
-                    </div>
-                    <div style="background: #2a2a3e; padding: 10px; border-radius: 8px; text-align: center;">
-                        <div style="color: #6b7280; font-size: 0.8em;">CVaR 95%</div>
-                        <div style="color: #f97316; font-weight: bold;">{cvar_95:.2f}%</div>
-                    </div>
-                    <div style="background: #2a2a3e; padding: 10px; border-radius: 8px; text-align: center;">
-                        <div style="color: #6b7280; font-size: 0.8em;">CVaR 99%</div>
-                        <div style="color: #ef4444; font-weight: bold;">{cvar_99:.2f}%</div>
-                    </div>
-                </div>
-            </div>
-        </div>
-        """, unsafe_allow_html=True)
+        if price.get("var_95"):
+            st.markdown("**Value at Risk**")
+            col_a, col_b = st.columns(2)
+            with col_a:
+                st.metric("VaR 95%", format_percentage(price.get("var_95", 0)))
+                st.metric("CVaR 95%", format_percentage(price.get("cvar_95", 0)))
+            with col_b:
+                st.metric("VaR 99%", format_percentage(price.get("var_99", 0)))
+                st.metric("CVaR 99%", format_percentage(price.get("cvar_99", 0)))
 
     st.divider()
 
-    # ==========================================================================
-    # COUNTERPARTY RISK
-    # ==========================================================================
-    st.subheader("🤝 Counterparty Risk")
+    # Counterparty Risk
+    st.subheader("Counterparty Risk")
 
     risk_score = st.session_state.get("risk_score") or {}
     if risk_score:
@@ -2387,56 +2212,27 @@ def render_tab_risk_metrics():
             grade = counterparty.get("grade", "?")
             score = counterparty.get("score", 0)
             color = get_grade_color(grade)
-            breakdown = counterparty.get("breakdown") or {}
 
             st.markdown(f"""
-            <div style="background: #1e1e2e; border-radius: 12px; padding: 20px;">
-                <div style="display: flex; align-items: center; gap: 15px; margin-bottom: 20px;">
-                    <div style="background: {color}; color: white; padding: 10px 20px; border-radius: 10px; font-size: 1.5em; font-weight: bold;">
-                        {grade}
-                    </div>
-                    <div>
-                        <div style="color: white; font-size: 1.2em; font-weight: bold;">Score: {score:.1f}/100</div>
-                        <div style="color: #6b7280;">Counterparty Risk Assessment</div>
-                    </div>
-                </div>
-                <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px;">
+            <span style="background-color: {color}; color: white; padding: 5px 10px; border-radius: 5px;">
+                {grade} ({score:.1f})
+            </span>
             """, unsafe_allow_html=True)
 
-            # Render breakdown metrics
-            metrics_html = ""
-            metrics_map = [
-                ("admin_key_control", "🔑 Admin Keys"),
-                ("custody", "🏦 Custody"),
-                ("timelock", "⏱️ Timelock"),
-                ("blacklist", "🚫 Blacklist")
-            ]
-
-            for key, label in metrics_map:
-                if key in breakdown:
-                    metric_score = breakdown[key].get('score', 0)
-                    if metric_score >= 70:
-                        m_color = "#22c55e"
-                    elif metric_score >= 50:
-                        m_color = "#eab308"
-                    else:
-                        m_color = "#ef4444"
-
-                    metrics_html += f"""
-                    <div style="background: #2a2a3e; padding: 15px; border-radius: 8px; text-align: center;">
-                        <div style="color: #6b7280; font-size: 0.85em; margin-bottom: 5px;">{label}</div>
-                        <div style="color: {m_color}; font-size: 1.5em; font-weight: bold;">{metric_score:.0f}</div>
-                    </div>
-                    """
-
-            st.markdown(metrics_html + "</div></div>", unsafe_allow_html=True)
+            breakdown = counterparty.get("breakdown") or {}
+            cols = st.columns(4)
+            metrics = ["admin_key_control", "custody", "timelock", "blacklist"]
+            for i, m in enumerate(metrics):
+                if m in breakdown:
+                    with cols[i]:
+                        st.metric(m.replace("_", " ").title(), f"{breakdown[m].get('score', 0):.0f}")
 
     st.divider()
 
-    # ==========================================================================
+    # =========================================================================
     # ORACLE METRICS
-    # ==========================================================================
-    st.subheader("🔮 Oracle Health")
+    # =========================================================================
+    st.subheader("🔮 Oracle Metrics")
 
     oracle_data = fetched.get("oracle") or {}
     freshness_data = oracle_data.get("freshness", [])
@@ -2445,80 +2241,68 @@ def render_tab_risk_metrics():
     col1, col2 = st.columns(2)
 
     with col1:
-        st.markdown("""
-        <div style="background: #1e1e2e; border-radius: 12px; padding: 20px;">
-            <h4 style="margin: 0 0 5px 0; color: white;">⏱️ Oracle Freshness</h4>
-            <p style="color: #6b7280; margin: 0 0 15px 0; font-size: 0.9em;">Time since last update</p>
-        """, unsafe_allow_html=True)
+        st.markdown("##### Oracle Freshness")
+        st.caption("Time since last oracle update")
 
         if freshness_data:
+            freshness_table = []
             for feed in freshness_data:
                 if feed.get("status") == "success":
                     minutes = feed.get("minutes_since_update", 0)
-                    price_val = feed.get("price", 0)
+                    hours = feed.get("hours_since_update", 0)
 
+                    # Determine status
                     if minutes < 60:
-                        status_color = "#22c55e"
-                        status_dot = "🟢"
+                        status = "🟢 Fresh"
                     elif minutes < 180:
-                        status_color = "#eab308"
-                        status_dot = "🟡"
+                        status = "🟡 Acceptable"
                     else:
-                        status_color = "#ef4444"
-                        status_dot = "🔴"
+                        status = "🔴 Stale"
 
-                    st.markdown(f"""
-                    <div style="display: flex; justify-content: space-between; align-items: center;
-                                background: #2a2a3e; padding: 12px; border-radius: 8px; margin-bottom: 8px;">
-                        <div>
-                            <div style="color: white; font-weight: bold;">{status_dot} {feed.get('name', 'Unknown')}</div>
-                            <div style="color: #6b7280; font-size: 0.85em;">{feed.get('chain', '').title()} • ${price_val:,.2f}</div>
-                        </div>
-                        <div style="text-align: right;">
-                            <div style="color: {status_color}; font-weight: bold;">{minutes:.0f} min</div>
-                        </div>
-                    </div>
-                    """, unsafe_allow_html=True)
+                    freshness_table.append({
+                        "Feed": feed.get("name", "Unknown"),
+                        "Chain": feed.get("chain", "").title(),
+                        "Price": f"${feed.get('price', 0):,.2f}" if feed.get("price") else "N/A",
+                        "Age (min)": f"{minutes:.1f}",
+                        "Status": status
+                    })
                 else:
-                    st.markdown(f"""
-                    <div style="background: #2a2a3e; padding: 12px; border-radius: 8px; margin-bottom: 8px; border-left: 3px solid #ef4444;">
-                        <div style="color: white;">❌ {feed.get('name', 'Unknown')}</div>
-                        <div style="color: #ef4444; font-size: 0.85em;">Error fetching data</div>
-                    </div>
-                    """, unsafe_allow_html=True)
+                    freshness_table.append({
+                        "Feed": feed.get("name", "Unknown"),
+                        "Chain": feed.get("chain", "").title(),
+                        "Price": "N/A",
+                        "Age (min)": "N/A",
+                        "Status": f"❌ Error: {feed.get('error', 'Unknown')[:20]}..."
+                    })
 
-            # Summary
-            successful = [f for f in freshness_data if f.get("status") == "success"]
-            if successful:
-                avg_fresh = sum(f.get("minutes_since_update", 0) for f in successful) / len(successful)
-                max_fresh = max(f.get("minutes_since_update", 0) for f in successful)
-                st.markdown(f"""
-                <div style="display: flex; justify-content: space-around; margin-top: 15px; padding-top: 15px; border-top: 1px solid #2a2a3e;">
-                    <div style="text-align: center;">
-                        <div style="color: #6b7280; font-size: 0.85em;">Average</div>
-                        <div style="color: white; font-weight: bold;">{avg_fresh:.0f} min</div>
-                    </div>
-                    <div style="text-align: center;">
-                        <div style="color: #6b7280; font-size: 0.85em;">Max Age</div>
-                        <div style="color: {'#22c55e' if max_fresh < 60 else '#eab308' if max_fresh < 180 else '#ef4444'}; font-weight: bold;">{max_fresh:.0f} min</div>
-                    </div>
-                </div>
-                """, unsafe_allow_html=True)
+            if freshness_table:
+                df_freshness = pd.DataFrame(freshness_table)
+                st.dataframe(df_freshness, use_container_width=True, hide_index=True)
+
+                # Summary metrics
+                successful = [f for f in freshness_data if f.get("status") == "success"]
+                if successful:
+                    avg_freshness = sum(f.get("minutes_since_update", 0) for f in successful) / len(successful)
+                    max_freshness = max(f.get("minutes_since_update", 0) for f in successful)
+
+                    col_a, col_b = st.columns(2)
+                    with col_a:
+                        st.metric("Avg. Freshness", f"{avg_freshness:.1f} min")
+                    with col_b:
+                        st.metric("Max. Age", f"{max_freshness:.1f} min")
+
+                    if max_freshness < 60:
+                        st.success("All oracles are fresh (< 1 hour)")
+                    elif max_freshness < 180:
+                        st.warning("Some oracles are aging (1-3 hours)")
+                    else:
+                        st.error("Stale oracle data detected (> 3 hours)")
         else:
-            st.markdown("""
-            <div style="color: #6b7280; text-align: center; padding: 20px;">
-                No oracle freshness data available
-            </div>
-            """, unsafe_allow_html=True)
-
-        st.markdown("</div>", unsafe_allow_html=True)
+            st.info("Oracle freshness data requires live data fetching. Enable 'Fetch live data' and run analysis.")
 
     with col2:
-        st.markdown("""
-        <div style="background: #1e1e2e; border-radius: 12px; padding: 20px;">
-            <h4 style="margin: 0 0 5px 0; color: white;">🔗 Cross-Chain Lag</h4>
-            <p style="color: #6b7280; margin: 0 0 15px 0; font-size: 0.9em;">Oracle sync between chains</p>
-        """, unsafe_allow_html=True)
+        st.markdown("##### Cross-Chain Oracle Lag")
+        st.caption("Time difference between oracle updates on different chains")
 
         if lag_data and lag_data.get("status") == "success":
             lag_seconds = lag_data.get("lag_seconds", 0)
@@ -2527,48 +2311,46 @@ def render_tab_risk_metrics():
             chain1 = lag_data.get("chain1", "Chain 1")
             chain2 = lag_data.get("chain2", "Chain 2")
 
+            # Lag metrics table
+            lag_table = [
+                {"Metric": "Chain 1", "Value": chain1},
+                {"Metric": "Chain 2", "Value": chain2},
+                {"Metric": "Lag", "Value": f"{lag_seconds} seconds ({lag_minutes:.2f} min)"},
+                {"Metric": "Ahead Chain", "Value": ahead_chain if ahead_chain != "synchronized" else "Synchronized"},
+            ]
+
+            # Add chain-specific data
+            chain1_data = lag_data.get("chain1_data") or {}
+            chain2_data = lag_data.get("chain2_data") or {}
+
+            if chain1_data.get("price"):
+                lag_table.append({"Metric": f"{chain1} Price", "Value": f"${chain1_data['price']:.8f}"})
+            if chain2_data.get("price"):
+                lag_table.append({"Metric": f"{chain2} Price", "Value": f"${chain2_data['price']:.8f}"})
+
+            df_lag = pd.DataFrame(lag_table)
+            st.dataframe(df_lag, use_container_width=True, hide_index=True)
+
+            # Visual indicator
             if lag_minutes < 5:
-                lag_color = "#22c55e"
-                lag_status = "Excellent"
+                st.success(f"Low lag: {lag_minutes:.2f} minutes")
             elif lag_minutes < 30:
-                lag_color = "#eab308"
-                lag_status = "Moderate"
+                st.warning(f"Moderate lag: {lag_minutes:.2f} minutes")
             else:
-                lag_color = "#ef4444"
-                lag_status = "High"
+                st.error(f"High lag: {lag_minutes:.2f} minutes")
 
-            st.markdown(f"""
-            <div style="text-align: center; padding: 20px 0;">
-                <div style="font-size: 2.5em; font-weight: bold; color: {lag_color};">{lag_minutes:.1f}</div>
-                <div style="color: #6b7280;">minutes lag</div>
-                <div style="background: {lag_color}; color: white; padding: 3px 12px; border-radius: 12px; display: inline-block; margin-top: 10px; font-size: 0.85em;">{lag_status}</div>
-            </div>
-            <div style="display: flex; justify-content: space-between; margin-top: 15px; padding: 15px; background: #2a2a3e; border-radius: 8px;">
-                <div style="text-align: center; flex: 1;">
-                    <div style="color: #6b7280; font-size: 0.85em;">{chain1}</div>
-                    <div style="color: {'#22c55e' if ahead_chain == chain1 else 'white'}; font-weight: bold;">{'⬆️ Ahead' if ahead_chain == chain1 else '—'}</div>
-                </div>
-                <div style="color: #6b7280; display: flex; align-items: center;">↔️</div>
-                <div style="text-align: center; flex: 1;">
-                    <div style="color: #6b7280; font-size: 0.85em;">{chain2}</div>
-                    <div style="color: {'#22c55e' if ahead_chain == chain2 else 'white'}; font-weight: bold;">{'⬆️ Ahead' if ahead_chain == chain2 else '—'}</div>
-                </div>
-            </div>
-            """, unsafe_allow_html=True)
+            # Interpretation
+            st.markdown("**Interpretation:**")
+            if ahead_chain == "synchronized":
+                st.info("Both oracles are synchronized - no cross-chain lag detected.")
+            else:
+                st.info(f"The {ahead_chain} oracle is {lag_minutes:.1f} minutes ahead. "
+                       "This lag represents the time difference between oracle updates on different chains.")
+
         elif lag_data and lag_data.get("status") == "error":
-            st.markdown(f"""
-            <div style="color: #ef4444; text-align: center; padding: 20px;">
-                ❌ Error: {lag_data.get('error', 'Unknown')}
-            </div>
-            """, unsafe_allow_html=True)
+            st.error(f"Error fetching lag data: {lag_data.get('error', 'Unknown error')}")
         else:
-            st.markdown("""
-            <div style="color: #6b7280; text-align: center; padding: 20px;">
-                Cross-chain lag data not available
-            </div>
-            """, unsafe_allow_html=True)
-
-        st.markdown("</div>", unsafe_allow_html=True)
+            st.info("Cross-chain oracle lag data requires live data fetching and oracle_lag configuration.")
 
 
 # =============================================================================
