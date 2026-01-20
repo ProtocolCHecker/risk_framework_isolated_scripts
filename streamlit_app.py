@@ -298,9 +298,15 @@ def fetch_proof_of_reserve(config: dict) -> dict:
         else:
             # Chainlink PoR verification (cbBTC, WBTC, etc.)
             token_addresses = config.get("token_addresses", [])
+            por_scope = por_config.get("por_scope", "global")
 
-            # Build extended evm_chains list that includes all chains from token_addresses
+            # Build extended evm_chains list
             evm_chains = list(por_config.get("evm_chains", []))
+
+            # Always add all chains from token_addresses for display purposes
+            # The reserve ratio calculation uses por_scope to determine which supply to use:
+            # - "global": compare reserves vs total supply from all chains
+            # - "per_chain": compare reserves vs supply from chains with PoR feeds only
             por_chain_names = {c.get("name", "").lower() for c in evm_chains}
 
             # Add chains from token_addresses that don't have PoR config (for supply only)
@@ -320,18 +326,28 @@ def fetch_proof_of_reserve(config: dict) -> dict:
 
             solana_token = por_config.get("solana_token") or config.get("solana_token")
 
-            por_result = analyze_proof_of_reserve(
-                evm_chains=evm_chains,
-                solana_token=solana_token
-            )
+            # Pass full config to use por_scope
+            # Always pass solana_token for display purposes - ratio calculation uses por_scope
+            por_config_with_rpcs = {
+                **por_config,
+                "evm_chains": evm_chains,
+                "solana_token": solana_token,
+                "rpc_urls": rpc_urls
+            }
+            por_result = analyze_proof_of_reserve(config=por_config_with_rpcs)
 
             result["protocol"] = "chainlink"
+            result["por_scope"] = por_scope
 
             if por_result.get("status") == "success":
                 metrics = por_result.get("metrics", {})
+                supply_data = por_result.get("supply", {})
+
                 result["reserve_ratio"] = metrics.get("reserve_ratio", 1.0)
                 result["reserves"] = metrics.get("reserves", 0)
-                result["total_supply"] = metrics.get("total_supply", 0)
+                result["total_supply"] = supply_data.get("effective", metrics.get("total_supply", 0))
+                result["total_supply_all_chains"] = supply_data.get("total", 0)
+                result["supply_from_por_chains"] = supply_data.get("from_por_chains", 0)
                 result["is_fully_backed"] = metrics.get("is_fully_backed", True)
 
                 # Extract per-chain supply data
@@ -341,8 +357,7 @@ def fetch_proof_of_reserve(config: dict) -> dict:
                     if chain.get("supply"):
                         result["chain_supply"][chain_name] = chain["supply"]
 
-                # Add Solana supply if present
-                supply_data = por_result.get("supply", {})
+                # Add Solana supply if present (for display purposes)
                 if supply_data.get("solana"):
                     result["chain_supply"]["solana"] = supply_data["solana"]
 
@@ -746,10 +761,10 @@ def fetch_oracle_data(config: dict) -> dict:
     oracle_freshness_config = config.get("oracle_freshness", {})
     price_feeds = oracle_freshness_config.get("price_feeds", [])
 
-    # Get oracle lag config
+    # Get oracle lag config - support both por_feed_X and price_feed_X formats
     oracle_lag_config = config.get("oracle_lag", {})
-    por_feed_1 = oracle_lag_config.get("por_feed_1", {})
-    por_feed_2 = oracle_lag_config.get("por_feed_2", {})
+    feed_1 = oracle_lag_config.get("por_feed_1") or oracle_lag_config.get("price_feed_1") or {}
+    feed_2 = oracle_lag_config.get("por_feed_2") or oracle_lag_config.get("price_feed_2") or {}
 
     # Fetch freshness for each price feed
     for feed in price_feeds:
@@ -797,37 +812,55 @@ def fetch_oracle_data(config: dict) -> dict:
                 "error": str(e)
             })
 
-    # Fetch cross-chain oracle lag (comparing PoR feeds)
-    if por_feed_1.get("address") and por_feed_2.get("address"):
-        try:
-            lag_result = analyze_oracle_lag(
-                chain1_name=por_feed_1.get("chain", "ethereum"),
-                oracle1_address=por_feed_1.get("address"),
-                chain2_name=por_feed_2.get("chain", "base"),
-                oracle2_address=por_feed_2.get("address")
-            )
+    # Fetch cross-chain oracle lag (comparing feeds across different chains)
+    if feed_1.get("address") and feed_2.get("address"):
+        chain1 = feed_1.get("chain", "ethereum")
+        chain2 = feed_2.get("chain", "ethereum")
 
-            if lag_result.get("status") == "success":
-                result["lag"] = {
-                    "chain1": lag_result.get("chain1", {}).get("name"),
-                    "chain2": lag_result.get("chain2", {}).get("name"),
-                    "lag_seconds": lag_result.get("lag_seconds"),
-                    "lag_minutes": lag_result.get("lag_minutes"),
-                    "ahead_chain": lag_result.get("ahead_chain"),
-                    "chain1_data": lag_result.get("chain1", {}).get("data"),
-                    "chain2_data": lag_result.get("chain2", {}).get("data"),
-                    "status": "success"
-                }
-            else:
+        # Cross-chain lag only makes sense if feeds are on DIFFERENT chains
+        if chain1 == chain2:
+            result["lag"] = {
+                "status": "not_applicable",
+                "reason": f"Both feeds are on the same chain ({chain1}). Cross-chain lag requires feeds on different chains.",
+                "lag_minutes": 0
+            }
+        else:
+            try:
+                lag_result = analyze_oracle_lag(
+                    chain1_name=chain1,
+                    oracle1_address=feed_1.get("address"),
+                    chain2_name=chain2,
+                    oracle2_address=feed_2.get("address")
+                )
+
+                if lag_result.get("status") == "success":
+                    result["lag"] = {
+                        "chain1": lag_result.get("chain1", {}).get("name"),
+                        "chain2": lag_result.get("chain2", {}).get("name"),
+                        "lag_seconds": lag_result.get("lag_seconds"),
+                        "lag_minutes": lag_result.get("lag_minutes"),
+                        "ahead_chain": lag_result.get("ahead_chain"),
+                        "chain1_data": lag_result.get("chain1", {}).get("data"),
+                        "chain2_data": lag_result.get("chain2", {}).get("data"),
+                        "status": "success"
+                    }
+                else:
+                    result["lag"] = {
+                        "status": "error",
+                        "error": lag_result.get("error", "Unknown error")
+                    }
+            except Exception as e:
                 result["lag"] = {
                     "status": "error",
-                    "error": lag_result.get("error", "Unknown error")
+                    "error": str(e)
                 }
-        except Exception as e:
-            result["lag"] = {
-                "status": "error",
-                "error": str(e)
-            }
+    else:
+        # Not enough feeds configured for cross-chain comparison
+        result["lag"] = {
+            "status": "not_configured",
+            "reason": "Cross-chain lag requires two oracle feeds configured in oracle_lag section.",
+            "lag_minutes": 0
+        }
 
     return result
 
@@ -864,6 +897,8 @@ def build_scoring_metrics(config: dict, fetched_data: dict) -> dict:
             multisig[cfg["role_name"]] = {
                 "is_multisig": cfg.get("is_multisig", False),
                 "is_eoa": cfg.get("is_eoa", False),
+                "is_dao_voting": cfg.get("is_dao_voting", False),
+                "dao_safeguards": cfg.get("dao_safeguards", {}),
                 "threshold": cfg.get("threshold", 1),
                 "owners_count": cfg.get("owners_count", 1),
             }
@@ -914,14 +949,21 @@ def build_scoring_metrics(config: dict, fetched_data: dict) -> dict:
     ]
     metrics["oracle_freshness_minutes"] = max(freshness_values) if freshness_values else 30
 
-    # Cross-chain lag: 0 for liquid staking (no cross-chain PoR), otherwise from fetched data
+    # Cross-chain lag: only use actual lag if we have valid cross-chain comparison
+    # Default to 0 (score 100) for: liquid staking, same-chain feeds, not configured, or errors
     verification_type = por_data.get("verification_type", "chainlink_por")
+    lag_data = oracle_data.get("lag", {})
+    lag_status = lag_data.get("status") if lag_data else None
+
     if verification_type == "liquid_staking":
         # Liquid staking tokens don't have cross-chain PoR feeds to compare
         metrics["cross_chain_lag_minutes"] = 0
+    elif lag_status == "success":
+        # Valid cross-chain comparison - use actual lag
+        metrics["cross_chain_lag_minutes"] = lag_data.get("lag_minutes", 0)
     else:
-        lag_data = oracle_data.get("lag", {})
-        metrics["cross_chain_lag_minutes"] = lag_data.get("lag_minutes", 15) if lag_data else 15
+        # not_applicable (same chain), not_configured, error, or missing -> default to 0 (best score)
+        metrics["cross_chain_lag_minutes"] = 0
 
     return metrics
 
@@ -1922,7 +1964,7 @@ def render_tab_supply():
                 )
                 fig.update_traces(textposition='inside', textinfo='percent+label')
                 fig.update_layout(showlegend=True, height=350)
-                st.plotly_chart(fig, use_container_width=True, key=f"chart_{id(fig)}")
+                st.plotly_chart(fig, use_container_width=True, key="chart_supply_distribution")
         else:
             st.info("No per-chain supply data available. Enable live data fetching.")
 
@@ -2062,7 +2104,7 @@ def render_tab_supply():
                     yaxis_title="% of Supply",
                     height=350
                 )
-                st.plotly_chart(fig, use_container_width=True, key=f"chart_{id(fig)}")
+                st.plotly_chart(fig, use_container_width=True, key="chart_holder_concentration")
 
                 # Summary table
                 df_conc = pd.DataFrame(conc_data)
@@ -2228,7 +2270,7 @@ def render_tab_lending():
                                     height=300,
                                     showlegend=False
                                 )
-                                st.plotly_chart(fig, use_container_width=True, key=f"chart_{id(fig)}")
+                                st.plotly_chart(fig, use_container_width=True, key=f"chart_aave_hf_{chain_name}")
     else:
         st.info("No AAVE data available. Enable live data fetching to retrieve lending metrics.")
 
@@ -2337,7 +2379,7 @@ def render_tab_lending():
                                         height=300,
                                         showlegend=False
                                     )
-                                    st.plotly_chart(fig, use_container_width=True, key=f"chart_{id(fig)}")
+                                    st.plotly_chart(fig, use_container_width=True, key=f"chart_compound_hf_{chain_name}_{market_name}")
                         else:
                             clr_error = clr.get("error", "No CLR data") if clr else "No CLR data"
                             st.info(f"CLR: {clr_error}")
@@ -2481,7 +2523,7 @@ def render_tab_dex():
                             height=250,
                             showlegend=False
                         )
-                        st.plotly_chart(fig, use_container_width=True, key=f"chart_{id(fig)}")
+                        st.plotly_chart(fig, use_container_width=True, key=f"chart_lp_conc_{protocol}_{chain}_{pool_name}")
 
                 # Top LPs Table
                 top_lps = pool.get("top_lps", [])
@@ -2971,6 +3013,14 @@ def render_tab_risk_metrics():
                 st.info(f"The {ahead_chain} oracle is {lag_minutes:.1f} minutes ahead. "
                        "This lag represents the time difference between oracle updates on different chains.")
 
+        elif lag_data and lag_data.get("status") == "not_applicable":
+            st.success("Not applicable - both oracle feeds are on the same chain.")
+            st.caption(lag_data.get("reason", "Cross-chain lag only applies when feeds are on different chains."))
+            st.metric("Cross-Chain Lag Score", "100 (Best)")
+        elif lag_data and lag_data.get("status") == "not_configured":
+            st.info("Not configured - cross-chain lag requires two oracle feeds on different chains.")
+            st.caption(lag_data.get("reason", ""))
+            st.metric("Cross-Chain Lag Score", "100 (Default)")
         elif lag_data and lag_data.get("status") == "error":
             st.error(f"Error fetching lag data: {lag_data.get('error', 'Unknown error')}")
         else:

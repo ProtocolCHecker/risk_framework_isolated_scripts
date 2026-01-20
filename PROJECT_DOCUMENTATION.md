@@ -286,6 +286,10 @@ for role in admin_roles:
         threshold_ratio = role.threshold / role.total_signers
         penalty = weight * (1 - threshold_ratio) * 10
         akc_score -= penalty
+    elif role.is_dao_voting:
+        dao_score = calculate_dao_score(role.dao_safeguards)  # See below
+        penalty = weight * (100 - dao_score) / 100 * 10
+        akc_score -= penalty
     else:
         akc_score -= weight * 7  # Unknown contract
 if not has_timelock:
@@ -302,6 +306,38 @@ return max(0, akc_score)
 | Mixed multisig/EOA with timelock | 55 | Partial decentralization |
 | Multisig but no timelock | 45 | No community response time |
 | Any critical role is EOA | 25 | Single key = highest risk |
+
+#### DAO Voting Scoring
+
+DAO voting is evaluated separately due to inherent risks (51% attacks, low participation, token concentration).
+
+**Base Score:** 50 (moderate risk)
+**Max Score:** 80 (never equals high-threshold multisig)
+
+**Safeguard Bonuses:**
+| Safeguard | Bonus | Justification |
+|-----------|-------|---------------|
+| `has_veto_power` | +15 | Guardian/council can block malicious proposals |
+| `has_dual_governance` | +10 | Opposition mechanism for token holders (e.g., Lido LIP-28) |
+| `quorum_pct >= 10%` | +5 | Higher quorum reduces low-participation attack risk |
+
+**Config Example:**
+```json
+{
+  "role_name": "dao_governance",
+  "is_dao_voting": true,
+  "dao_safeguards": {
+    "has_veto_power": true,
+    "has_dual_governance": true,
+    "quorum_pct": 5
+  }
+}
+```
+
+**Why DAO voting is capped at 80:**
+- Proven 51% attacks (Aragon 2023)
+- Typical participation <10%
+- Token concentration enables governance capture
 
 ### 2.2 Custody Model (30% of category)
 

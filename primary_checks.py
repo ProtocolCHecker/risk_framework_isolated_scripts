@@ -89,6 +89,18 @@ def check_has_security_audit(metrics: dict) -> CheckResult:
     )
 
 
+def _get_unresolved_critical(audit: dict) -> int:
+    """
+    Get unresolved critical count from an audit entry.
+    Prefers 'unresolved.critical' if present, falls back to 'issues.critical'.
+    """
+    if "unresolved" in audit and isinstance(audit["unresolved"], dict):
+        return audit["unresolved"].get("critical", 0) or 0
+    if "issues" in audit:
+        return audit["issues"].get("critical", 0) or 0
+    return 0
+
+
 def check_no_critical_audit_issues(metrics: dict) -> CheckResult:
     """Check if there are no unresolved critical audit issues."""
     check_def = PRIMARY_CHECKS["no_critical_audit_issues"]
@@ -97,12 +109,10 @@ def check_no_critical_audit_issues(metrics: dict) -> CheckResult:
     critical_issues = 0
 
     if audit_data:
-        # Check for direct issues field (simple format)
-        if "issues" in audit_data:
-            critical_issues = audit_data["issues"].get("critical", 0) or 0
+        # Check for direct issues/unresolved field (simple format)
+        critical_issues += _get_unresolved_critical(audit_data)
 
         # Check for issues in nested audit arrays (complex format)
-        # Look in various audit array fields
         audit_arrays = [
             audit_data.get("key_audits", []),
             audit_data.get("wsteth_specific_audits", []),
@@ -111,13 +121,13 @@ def check_no_critical_audit_issues(metrics: dict) -> CheckResult:
         for audit_array in audit_arrays:
             if isinstance(audit_array, list):
                 for audit in audit_array:
-                    if isinstance(audit, dict) and "issues" in audit:
-                        critical_issues += audit["issues"].get("critical", 0) or 0
+                    if isinstance(audit, dict):
+                        critical_issues += _get_unresolved_critical(audit)
 
         # Check latest_protocol_audit
         latest = audit_data.get("latest_protocol_audit", {})
-        if isinstance(latest, dict) and "issues" in latest:
-            critical_issues += latest["issues"].get("critical", 0) or 0
+        if isinstance(latest, dict):
+            critical_issues += _get_unresolved_critical(latest)
 
     passes = critical_issues == 0
 

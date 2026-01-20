@@ -145,7 +145,8 @@ def calculate_reserve_ratio(reserves, total_supply):
 def analyze_chainlink_por(
     evm_chains: list = None,
     solana_token: str = None,
-    rpc_urls: dict = None
+    rpc_urls: dict = None,
+    por_scope: str = "global"
 ) -> dict:
     """
     Analyze proof of reserves using Chainlink PoR feeds.
@@ -156,6 +157,8 @@ def analyze_chainlink_por(
         evm_chains: List of dicts with keys: name, por (PoR address), token (token address)
         solana_token: Optional Solana token address
         rpc_urls: Optional custom RPC URLs
+        por_scope: "global" = PoR covers all chains (compare median PoR vs total supply)
+                   "per_chain" = PoR covers only its chain (compare PoR vs supply from chains with PoR only)
 
     Returns:
         dict with reserve analysis
@@ -167,7 +170,8 @@ def analyze_chainlink_por(
         "error": None,
         "chain_data": [],
         "reserves": {},
-        "supply": {}
+        "supply": {},
+        "por_scope": por_scope
     }
 
     if not evm_chains:
@@ -175,15 +179,17 @@ def analyze_chainlink_por(
 
     reserve_values = []
     total_supply = 0
+    supply_from_por_chains = 0  # Track supply only from chains that have PoR
 
     # Collect reserves from each PoR feed
     for chain in evm_chains:
         chain_result = {"name": chain["name"], "por_address": chain.get("por"), "token_address": chain.get("token")}
+        has_por = bool(chain.get("por"))
 
         try:
             w3 = get_web3(chain["name"], rpc_urls)
 
-            if chain.get("por"):
+            if has_por:
                 reserves = get_reserves(w3, chain["por"])
                 reserve_values.append(reserves)
                 chain_result["reserves"] = reserves
@@ -195,13 +201,17 @@ def analyze_chainlink_por(
                 chain_result["supply"] = supply
                 print(f"{chain['name'].upper()} Supply: {supply:.8f}")
 
+                # Track supply from chains with PoR for per_chain scope
+                if has_por:
+                    supply_from_por_chains += supply
+
         except Exception as e:
             chain_result["error"] = str(e)
             print(f"Error on {chain['name']}: {e}")
 
         result["chain_data"].append(chain_result)
 
-    # Add Solana supply
+    # Add Solana supply (only for global scope, as Solana has no PoR feed)
     if solana_token:
         try:
             solana_supply = get_solana_supply(solana_token)
@@ -217,9 +227,21 @@ def analyze_chainlink_por(
     result["reserves"]["all_values"] = reserve_values
     print(f"\nMedian Reserves: {median_reserves:.8f}")
 
+    # Determine effective supply based on por_scope
+    if por_scope == "per_chain":
+        effective_supply = supply_from_por_chains
+        print(f"PoR Scope: per_chain - using supply from chains with PoR only: {effective_supply:.8f}")
+    else:
+        effective_supply = total_supply
+        print(f"PoR Scope: global - using total supply from all chains: {effective_supply:.8f}")
+
+    result["supply"]["effective"] = effective_supply
+    result["supply"]["total"] = total_supply
+    result["supply"]["from_por_chains"] = supply_from_por_chains
+
     # Calculate metrics
     print("\n" + "="*50)
-    metrics = calculate_reserve_ratio(median_reserves, total_supply)
+    metrics = calculate_reserve_ratio(median_reserves, effective_supply)
     result["metrics"] = metrics
 
     for key, value in metrics.items():
@@ -472,7 +494,8 @@ def analyze_proof_of_reserve(
             return analyze_chainlink_por(
                 evm_chains=config.get("evm_chains", []),
                 solana_token=config.get("solana_token"),
-                rpc_urls=rpc_urls
+                rpc_urls=rpc_urls,
+                por_scope=config.get("por_scope", "global")
             )
 
         else:

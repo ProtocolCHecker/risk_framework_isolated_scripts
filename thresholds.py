@@ -309,6 +309,38 @@ COUNTERPARTY_THRESHOLDS = {
 }
 
 # =============================================================================
+# DAO VOTING THRESHOLDS
+# =============================================================================
+
+DAO_VOTING_THRESHOLDS = {
+    "base_score": 50,
+    "max_score": 80,
+    "description": "DAO voting is less secure than high-threshold multisig due to 51% attack risk, "
+                   "low participation rates, and potential token concentration. Safeguards can improve score.",
+    "safeguard_bonuses": {
+        "has_veto_power": {
+            "bonus": 15,
+            "justification": "Guardian/council veto power can block malicious proposals, "
+                            "providing critical safety mechanism against governance attacks."
+        },
+        "has_dual_governance": {
+            "bonus": 10,
+            "justification": "Dual governance allows token holders to oppose harmful changes, "
+                            "adding an extra layer of protection (e.g., Lido LIP-28)."
+        },
+        "high_quorum": {
+            "threshold_pct": 10,
+            "bonus": 5,
+            "justification": "Quorum >= 10% reduces risk of low-participation attacks. "
+                            "Many DAOs have quorums as low as 1%, which is risky."
+        },
+    },
+    "justification": "DAO voting carries inherent risks: proven 51% attacks (Aragon 2023), "
+                    "typical participation <10%, and potential token concentration. "
+                    "Max score of 80 reflects that DAO voting never equals high-threshold multisig security."
+}
+
+# =============================================================================
 # MARKET RISK THRESHOLDS
 # =============================================================================
 

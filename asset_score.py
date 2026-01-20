@@ -21,6 +21,7 @@ try:
         COLLATERAL_THRESHOLDS,
         RESERVE_ORACLE_THRESHOLDS,
         CIRCUIT_BREAKERS,
+        DAO_VOTING_THRESHOLDS,
     )
     from .primary_checks import run_primary_checks, CheckStatus
 except ImportError:
@@ -34,6 +35,7 @@ except ImportError:
         COLLATERAL_THRESHOLDS,
         RESERVE_ORACLE_THRESHOLDS,
         CIRCUIT_BREAKERS,
+        DAO_VOTING_THRESHOLDS,
     )
     from primary_checks import run_primary_checks, CheckStatus
 
@@ -353,6 +355,7 @@ def calculate_counterparty_score(
 
     all_multisig = True
     any_eoa = False
+    any_dao_voting = False
 
     for role, config in multisig_configs.items():
         if role == "timelock":
@@ -375,6 +378,42 @@ def calculate_counterparty_score(
             penalty = weight * (1 - ratio) * 10
             akc_score -= penalty
             akc_justifications.append(f"{role}: {threshold}/{total} multisig (ratio {ratio:.2f}) - penalty {penalty:.1f} points")
+        elif config.get("is_dao_voting"):
+            # DAO voting: base score with safeguard bonuses
+            any_dao_voting = True
+            all_multisig = False
+            dao_base = DAO_VOTING_THRESHOLDS["base_score"]
+            dao_max = DAO_VOTING_THRESHOLDS["max_score"]
+            dao_score = dao_base
+            dao_details = []
+
+            # Check for safeguards
+            safeguards = config.get("dao_safeguards", {})
+            bonuses = DAO_VOTING_THRESHOLDS["safeguard_bonuses"]
+
+            if safeguards.get("has_veto_power"):
+                dao_score += bonuses["has_veto_power"]["bonus"]
+                dao_details.append(f"+{bonuses['has_veto_power']['bonus']} veto")
+
+            if safeguards.get("has_dual_governance"):
+                dao_score += bonuses["has_dual_governance"]["bonus"]
+                dao_details.append(f"+{bonuses['has_dual_governance']['bonus']} dual gov")
+
+            quorum = safeguards.get("quorum_pct", 0)
+            if quorum >= bonuses["high_quorum"]["threshold_pct"]:
+                dao_score += bonuses["high_quorum"]["bonus"]
+                dao_details.append(f"+{bonuses['high_quorum']['bonus']} quorum>={bonuses['high_quorum']['threshold_pct']}%")
+
+            # Cap at max DAO score
+            dao_score = min(dao_score, dao_max)
+
+            # Convert DAO score to penalty (100 - dao_score), scaled by weight
+            # A dao_score of 80 means penalty of 20, scaled by weight ratio
+            penalty = weight * (100 - dao_score) / 100 * 10
+            akc_score -= penalty
+
+            safeguard_str = f" ({', '.join(dao_details)})" if dao_details else " (no safeguards)"
+            akc_justifications.append(f"{role}: DAO voting (score {dao_score}){safeguard_str} - penalty {penalty:.1f} points")
         else:
             # Unknown contract
             penalty = weight * 7
@@ -395,6 +434,7 @@ def calculate_counterparty_score(
         "justification": " | ".join(akc_justifications),
         "all_multisig": all_multisig,
         "any_eoa": any_eoa,
+        "any_dao_voting": any_dao_voting,
     }
 
     # 2. Custody Model (30%)
