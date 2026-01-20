@@ -67,12 +67,24 @@ def check_has_security_audit(metrics: dict) -> CheckResult:
     audit_data = metrics.get("audit_data")
     has_audit = audit_data is not None and bool(audit_data)
 
+    # Get auditor name(s) for display - handle both simple and complex formats
+    if audit_data:
+        if "auditors" in audit_data and isinstance(audit_data["auditors"], list):
+            # Complex format (e.g., wstETH, WBTC, RLP)
+            auditors = audit_data["auditors"]
+            actual_value = f"{len(auditors)} auditors ({', '.join(auditors[:3])}{'...' if len(auditors) > 3 else ''})"
+        else:
+            # Simple format
+            actual_value = audit_data.get("auditor", "None")
+    else:
+        actual_value = "No audit"
+
     return CheckResult(
         check_id="has_security_audit",
         name=check_def["name"],
         status=CheckStatus.PASS if has_audit else CheckStatus.FAIL,
         condition=check_def["condition"],
-        actual_value=audit_data.get("auditor", "None") if audit_data else "No audit",
+        actual_value=actual_value,
         reason="Audit exists" if has_audit else check_def["disqualify_reason"],
     )
 
@@ -82,8 +94,30 @@ def check_no_critical_audit_issues(metrics: dict) -> CheckResult:
     check_def = PRIMARY_CHECKS["no_critical_audit_issues"]
 
     audit_data = metrics.get("audit_data", {})
-    issues = audit_data.get("issues", {}) if audit_data else {}
-    critical_issues = issues.get("critical", 0) or 0
+    critical_issues = 0
+
+    if audit_data:
+        # Check for direct issues field (simple format)
+        if "issues" in audit_data:
+            critical_issues = audit_data["issues"].get("critical", 0) or 0
+
+        # Check for issues in nested audit arrays (complex format)
+        # Look in various audit array fields
+        audit_arrays = [
+            audit_data.get("key_audits", []),
+            audit_data.get("wsteth_specific_audits", []),
+            audit_data.get("wbtc_specific_audits", []),
+        ]
+        for audit_array in audit_arrays:
+            if isinstance(audit_array, list):
+                for audit in audit_array:
+                    if isinstance(audit, dict) and "issues" in audit:
+                        critical_issues += audit["issues"].get("critical", 0) or 0
+
+        # Check latest_protocol_audit
+        latest = audit_data.get("latest_protocol_audit", {})
+        if isinstance(latest, dict) and "issues" in latest:
+            critical_issues += latest["issues"].get("critical", 0) or 0
 
     passes = critical_issues == 0
 

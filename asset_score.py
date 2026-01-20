@@ -159,10 +159,57 @@ def calculate_smart_contract_score(
     audit_justification = []
 
     if audit_data:
-        # Adjust for issues
-        critical = audit_data.get("issues", {}).get("critical", 0)
-        high = audit_data.get("issues", {}).get("high", 0)
+        # Handle both simple and complex audit formats
+        critical = 0
+        high = 0
+        latest_date = None
+        auditors_list = []
 
+        # Simple format: direct issues and auditor fields
+        if "issues" in audit_data:
+            critical = audit_data["issues"].get("critical", 0) or 0
+            high = audit_data["issues"].get("high", 0) or 0
+
+        if "auditor" in audit_data:
+            auditors_list = [audit_data["auditor"]]
+
+        if "date" in audit_data and isinstance(audit_data["date"], str):
+            latest_date = audit_data["date"]
+
+        # Complex format: nested audit arrays
+        if "auditors" in audit_data and isinstance(audit_data["auditors"], list):
+            auditors_list = audit_data["auditors"]
+
+        # Check nested audit arrays for issues and dates
+        audit_arrays = [
+            audit_data.get("key_audits", []),
+            audit_data.get("wsteth_specific_audits", []),
+            audit_data.get("wbtc_specific_audits", []),
+        ]
+        for audit_array in audit_arrays:
+            if isinstance(audit_array, list):
+                for audit in audit_array:
+                    if isinstance(audit, dict):
+                        if "issues" in audit:
+                            critical += audit["issues"].get("critical", 0) or 0
+                            high += audit["issues"].get("high", 0) or 0
+                        if "date" in audit:
+                            audit_date_str = audit["date"]
+                            if latest_date is None or audit_date_str > latest_date:
+                                latest_date = audit_date_str
+
+        # Check latest_protocol_audit
+        latest_audit = audit_data.get("latest_protocol_audit", {})
+        if isinstance(latest_audit, dict):
+            if "issues" in latest_audit:
+                critical += latest_audit["issues"].get("critical", 0) or 0
+                high += latest_audit["issues"].get("high", 0) or 0
+            if "date" in latest_audit:
+                audit_date_str = latest_audit["date"]
+                if latest_date is None or audit_date_str > latest_date:
+                    latest_date = audit_date_str
+
+        # Adjust for issues
         if critical > 0:
             audit_score *= 0.3
             audit_justification.append(f"{critical} critical issues found - severe penalty")
@@ -174,9 +221,9 @@ def calculate_smart_contract_score(
             audit_justification.append("No critical or high issues - strong audit")
 
         # Adjust for recency
-        if audit_data.get("date"):
+        if latest_date:
             try:
-                audit_date = datetime.strptime(audit_data["date"], "%Y-%m")
+                audit_date = datetime.strptime(latest_date, "%Y-%m")
                 months_ago = (datetime.now() - audit_date).days / 30
 
                 if months_ago > 24:
@@ -191,10 +238,17 @@ def calculate_smart_contract_score(
                 pass
 
         # Bonus for top-tier auditor
-        top_auditors = ["OpenZeppelin", "Trail of Bits", "Consensys Diligence", "Spearbit", "ChainSecurity"]
-        if audit_data.get("auditor") in top_auditors:
+        top_auditors = ["OpenZeppelin", "Trail of Bits", "Consensys Diligence", "Spearbit", "ChainSecurity",
+                       "Quantstamp", "Sigma Prime", "MixBytes", "Certora", "Hexens"]
+        top_tier_found = [a for a in auditors_list if a in top_auditors]
+        if top_tier_found:
             audit_score = min(100, audit_score * 1.1)
-            audit_justification.append(f"Top-tier auditor ({audit_data['auditor']}) - bonus applied")
+            audit_justification.append(f"Top-tier auditor(s) ({', '.join(top_tier_found[:3])}) - bonus applied")
+
+        # Bonus for multiple auditors
+        if len(auditors_list) >= 3:
+            audit_score = min(100, audit_score * 1.05)
+            audit_justification.append(f"{len(auditors_list)} auditors - diversity bonus")
     else:
         audit_score = 20
         audit_justification.append("No audit found - maximum smart contract risk")

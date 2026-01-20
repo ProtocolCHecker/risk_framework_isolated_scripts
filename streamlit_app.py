@@ -1726,13 +1726,49 @@ def render_tab_protocol_info():
         audit = config.get("audit_data")
         if audit:
             st.markdown("**Audit Information**")
-            st.markdown(f"- Auditor: **{audit.get('auditor', 'N/A')}**")
-            st.markdown(f"- Date: {audit.get('date', 'N/A')}")
-            issues = audit.get("issues", {})
-            st.markdown(f"- Critical Issues: {issues.get('critical', 0)}")
-            st.markdown(f"- High Issues: {issues.get('high', 0)}")
-            st.markdown(f"- Medium Issues: {issues.get('medium', 0)}")
-            st.markdown(f"- Low Issues: {issues.get('low', 0)}")
+
+            # Handle complex audit structure (multiple auditors, nested audits)
+            if "auditors" in audit and isinstance(audit["auditors"], list):
+                # Complex format (e.g., wstETH, RLP)
+                auditors_list = audit.get("auditors", [])
+                st.markdown(f"- Auditors: **{len(auditors_list)}** ({', '.join(auditors_list[:5])}{'...' if len(auditors_list) > 5 else ''})")
+
+                # Total audits count
+                total_audits = audit.get("total_audits", {})
+                if isinstance(total_audits, dict):
+                    total_count = sum(total_audits.values())
+                    st.markdown(f"- Total Audits: **{total_count}**")
+
+                # Get latest/key audit info
+                key_audits = audit.get("key_audits") or audit.get("wsteth_specific_audits") or audit.get("wbtc_specific_audits") or []
+                latest_audit = audit.get("latest_protocol_audit")
+
+                if latest_audit:
+                    st.markdown(f"- Latest Audit: **{latest_audit.get('auditor', 'N/A')}** ({latest_audit.get('date', 'N/A')})")
+                    issues = latest_audit.get("issues", {})
+                    if issues:
+                        st.markdown(f"- Issues (latest): C:{issues.get('critical', 0)} H:{issues.get('high', 0)} M:{issues.get('medium', 0)} L:{issues.get('low', 0)}")
+                elif key_audits:
+                    # Show first key audit
+                    first_audit = key_audits[0]
+                    st.markdown(f"- Key Audit: **{first_audit.get('auditor', 'N/A')}** ({first_audit.get('date', 'N/A')})")
+                    issues = first_audit.get("issues", {})
+                    if issues:
+                        st.markdown(f"- Issues: C:{issues.get('critical', 0)} H:{issues.get('high', 0)} M:{issues.get('medium', 0)} L:{issues.get('low', 0)}")
+
+                # Bug bounty
+                if audit.get("bug_bounty"):
+                    st.markdown(f"- Bug Bounty: **{audit.get('bug_bounty')}**")
+
+            else:
+                # Simple format (e.g., single auditor)
+                st.markdown(f"- Auditor: **{audit.get('auditor', 'N/A')}**")
+                st.markdown(f"- Date: {audit.get('date', 'N/A')}")
+                issues = audit.get("issues", {})
+                st.markdown(f"- Critical Issues: {issues.get('critical', 0)}")
+                st.markdown(f"- High Issues: {issues.get('high', 0)}")
+                st.markdown(f"- Medium Issues: {issues.get('medium', 0)}")
+                st.markdown(f"- Low Issues: {issues.get('low', 0)}")
         else:
             st.warning("No audit data available")
 
