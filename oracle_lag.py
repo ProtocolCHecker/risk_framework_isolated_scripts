@@ -197,6 +197,16 @@ ORACLE_ABI = json.loads('''[
     },
     {
         "inputs": [],
+        "name": "lastPrice",
+        "outputs": [
+            {"name": "price", "type": "uint256"},
+            {"name": "timestamp", "type": "uint256"}
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [],
         "name": "decimals",
         "outputs": [{"name": "", "type": "uint8"}],
         "stateMutability": "view",
@@ -321,8 +331,10 @@ Examples:
 def get_oracle_data(rpc_url, oracle_address):
     """Fetch latest oracle data from a chain.
 
-    Tries latestRoundData() first (standard Chainlink), then falls back
-    to latestAnswer() for adapters (like BGD Labs wstETH/USD).
+    Tries methods in order:
+    1. latestRoundData() - standard Chainlink AggregatorV3
+    2. lastPrice() - RLP Fundamental Oracle (returns price, timestamp)
+    3. latestAnswer() - adapters without timestamp (uses current time as proxy)
     """
     try:
         w3 = Web3(Web3.HTTPProvider(rpc_url))
@@ -341,7 +353,25 @@ def get_oracle_data(rpc_url, oracle_address):
                 "timestamp": datetime.fromtimestamp(round_data[3])
             }
         except Exception:
-            # Fallback to latestAnswer() for adapters (no timestamp available)
+            pass
+
+        # Fallback to lastPrice() for RLP Fundamental Oracle
+        try:
+            last_price_data = contract.functions.lastPrice().call()
+            price = last_price_data[0]
+            timestamp = last_price_data[1]
+            return {
+                "round_id": 0,  # Not available for this oracle type
+                "price": price,
+                "updated_at": timestamp,
+                "timestamp": datetime.fromtimestamp(timestamp),
+                "oracle_type": "lastPrice"
+            }
+        except Exception:
+            pass
+
+        # Final fallback to latestAnswer() for adapters (no timestamp available)
+        try:
             import time
             answer = contract.functions.latestAnswer().call()
             current_time = int(time.time())
@@ -352,6 +382,10 @@ def get_oracle_data(rpc_url, oracle_address):
                 "timestamp": datetime.fromtimestamp(current_time),
                 "is_adapter": True  # Flag that this is an adapter without timestamp
             }
+        except Exception as e:
+            print(f"All oracle methods failed: {e}")
+            return None
+
     except Exception as e:
         print(f"Error fetching data: {e}")
         return None

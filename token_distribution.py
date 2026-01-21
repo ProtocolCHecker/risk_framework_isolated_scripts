@@ -186,8 +186,8 @@ def analyze_token(token_address, chain_name, blockscout_url=None, use_ankr=False
     if chain_name.lower() == "solana":
         holders = get_solana_holders(token_address)
         result["data_source"] = "Helius"
-    elif use_ankr or chain_name.lower() in ["arbitrum"]:
-        # Use Ankr for Arbitrum (Blockscout often down) or if explicitly requested
+    elif use_ankr or chain_name.lower() in ["arbitrum", "ethereum"]:
+        # Use Ankr for Arbitrum/Ethereum (Blockscout often unreliable) or if explicitly requested
         print(f"  Using Ankr API...")
         holders = get_ankr_holders(token_address, chain_name, decimals=decimals)
         result["data_source"] = "Ankr"

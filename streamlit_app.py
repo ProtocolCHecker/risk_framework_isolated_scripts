@@ -19,6 +19,7 @@ from datetime import datetime, timezone
 from typing import Dict, Any, List, Optional
 import traceback
 import time
+import requests
 import plotly.express as px
 import plotly.graph_objects as go
 from web3 import Web3
@@ -71,6 +72,7 @@ try:
     from compound import analyze_compound_market, MARKETS as COMPOUND_MARKETS
     from uniswap import UniswapV3Analyzer
     from curve import CurveFinanceAnalyzer
+    from fluid import analyze_fluid_pool
     from proof_of_reserve import analyze_proof_of_reserve
     from price_risk import get_coingecko_data, calculate_peg_deviation, calculate_metrics
     from oracle_lag import analyze_oracle_lag, get_oracle_freshness
@@ -188,27 +190,32 @@ def fetch_price_data(config: dict) -> dict:
         token_id = price_risk.get("token_coingecko_id")
         underlying_id = price_risk.get("underlying_coingecko_id")
 
-        if token_id and underlying_id:
+        # Fetch token prices (required for volatility calculation)
+        token_prices = None
+        if token_id:
             _, token_prices = get_coingecko_data(token_id, days=365)
-            _, underlying_prices = get_coingecko_data(underlying_id, days=365)
-
-            if token_prices and underlying_prices:
+            if token_prices:
                 result["token_price"] = token_prices[-1]
-                result["underlying_price"] = underlying_prices[-1]
 
-                # Calculate peg deviation
-                min_len = min(len(token_prices), len(underlying_prices))
-                peg_metrics = calculate_peg_deviation(token_prices[:min_len], underlying_prices[:min_len])
-                result["peg_deviation"] = float(peg_metrics.get("Current Deviation", "0%").replace("%", ""))
-
-                # Calculate risk metrics
-                # Note: calculate_metrics returns formatted strings like "40.92%" (already percentages)
+                # Calculate risk metrics (volatility, VaR) - only needs token prices
                 risk_metrics = calculate_metrics(token_prices)
                 result["volatility"] = float(risk_metrics.get("Annualized Volatility", "0%").replace("%", ""))
                 result["var_95"] = abs(float(risk_metrics.get("VaR 95%", "0%").replace("%", "")))
                 result["var_99"] = abs(float(risk_metrics.get("VaR 99%", "0%").replace("%", "")))
                 result["cvar_95"] = abs(float(risk_metrics.get("CVaR 95%", "0%").replace("%", "")))
                 result["cvar_99"] = abs(float(risk_metrics.get("CVaR 99%", "0%").replace("%", "")))
+
+        # Calculate peg deviation (requires both token and underlying prices)
+        if token_id and underlying_id and token_prices:
+            _, underlying_prices = get_coingecko_data(underlying_id, days=365)
+
+            if underlying_prices:
+                result["underlying_price"] = underlying_prices[-1]
+
+                min_len = min(len(token_prices), len(underlying_prices))
+                peg_metrics = calculate_peg_deviation(token_prices[:min_len], underlying_prices[:min_len])
+                result["peg_deviation"] = float(peg_metrics.get("Current Deviation", "0%").replace("%", ""))
+
     except Exception as e:
         result["error"] = str(e)
 
@@ -294,6 +301,125 @@ def fetch_proof_of_reserve(config: dict) -> dict:
                         result["chain_supply"][chain_name] = supply
                     except Exception as e:
                         print(f"Error fetching supply from {chain_name}: {e}")
+
+        elif verification_type == "apostro_scraper":
+            # NAV-based token (RLP) - no traditional reserve ratio
+            # RLP price = NAV = backing per token by definition
+            from rlp_reserve_scrapper import ResolvReservesScraper
+
+            # 1. Get RLP backing data from Apostro scraper
+            scraper = ResolvReservesScraper()
+            scraper_data = scraper.scrape_data()
+            general_metrics = scraper_data.get("general_metrics", {})
+            rlp_tvl_usd = general_metrics.get("rlp_tvl", 0)
+
+            # 2. Get NAV price from on-chain oracle (Resolv AggregatorV3)
+            nav_price = 0
+            nav_oracle_address = por_config.get("nav_oracle_address")
+            nav_oracle_chain = por_config.get("nav_oracle_chain", "ethereum")
+            nav_oracle_decimals = por_config.get("nav_oracle_decimals", 8)
+
+            if nav_oracle_address:
+                try:
+                    rpc_url = rpc_urls.get(nav_oracle_chain)
+                    if rpc_url:
+                        w3 = Web3(Web3.HTTPProvider(rpc_url))
+                        oracle_contract = w3.eth.contract(
+                            address=Web3.to_checksum_address(nav_oracle_address),
+                            abi=[{
+                                "inputs": [],
+                                "name": "latestRoundData",
+                                "outputs": [
+                                    {"name": "roundId", "type": "uint80"},
+                                    {"name": "answer", "type": "int256"},
+                                    {"name": "startedAt", "type": "uint256"},
+                                    {"name": "updatedAt", "type": "uint256"},
+                                    {"name": "answeredInRound", "type": "uint80"}
+                                ],
+                                "stateMutability": "view",
+                                "type": "function"
+                            }]
+                        )
+                        round_data = oracle_contract.functions.latestRoundData().call()
+                        nav_price = round_data[1] / (10 ** nav_oracle_decimals)
+                except Exception as e:
+                    print(f"Error fetching NAV from oracle: {e}")
+
+            # 3. Get Market price from CoinGecko
+            market_price = 0
+            token_coingecko_id = por_config.get("token_coingecko_id")
+            if token_coingecko_id:
+                try:
+                    price_url = f"https://api.coingecko.com/api/v3/simple/price?ids={token_coingecko_id}&vs_currencies=usd"
+                    price_response = requests.get(price_url, timeout=10)
+                    price_data = price_response.json()
+                    market_price = price_data.get(token_coingecko_id, {}).get("usd", 0)
+                except Exception as e:
+                    print(f"Error fetching market price: {e}")
+
+            # 4. Calculate NAV vs Market deviation
+            nav_market_deviation_pct = 0
+            if nav_price > 0 and market_price > 0:
+                nav_market_deviation_pct = ((market_price - nav_price) / nav_price) * 100
+
+            # 5. Set result - NAV-based means reserve_ratio is 1.0 by definition
+            result["protocol"] = "resolv"
+            result["verification_type"] = "nav_based"
+            result["reserve_ratio"] = 1.0  # NAV-based = always 1:1 by definition
+            result["is_fully_backed"] = True
+            result["reserves"] = rlp_tvl_usd  # TVL in USD
+
+            # Store backing info and price comparison for display
+            result["components"] = {
+                "nav_price_usd": nav_price,
+                "market_price_usd": market_price,
+                "nav_market_deviation_pct": nav_market_deviation_pct,
+                "rlp_tvl_usd": rlp_tvl_usd,
+                "collateral_pool": scraper_data.get("collateral_pool", [])[:5],
+                "backing_locations": scraper_data.get("backing_assets_location", [])[:5],
+                "page_timestamp": scraper_data.get("page_timestamp")
+            }
+
+            # 6. Fetch per-chain supply from token_addresses
+            token_addresses = config.get("token_addresses", [])
+            token_decimals = config.get("token_decimals", 18)
+            total_supply = 0
+
+            for token_cfg in token_addresses:
+                chain_name = token_cfg.get("chain", "").lower()
+                token_addr = token_cfg.get("address")
+
+                # Skip Solana
+                if chain_name == "solana" or not token_addr:
+                    continue
+
+                try:
+                    rpc_url = rpc_urls.get(chain_name)
+                    if not rpc_url:
+                        continue
+
+                    w3 = Web3(Web3.HTTPProvider(rpc_url))
+                    token_contract = w3.eth.contract(
+                        address=Web3.to_checksum_address(token_addr),
+                        abi=[{
+                            "inputs": [], "name": "totalSupply",
+                            "outputs": [{"type": "uint256"}],
+                            "stateMutability": "view", "type": "function"
+                        }, {
+                            "inputs": [], "name": "decimals",
+                            "outputs": [{"type": "uint8"}],
+                            "stateMutability": "view", "type": "function"
+                        }]
+                    )
+                    supply_raw = token_contract.functions.totalSupply().call()
+                    decimals = token_contract.functions.decimals().call()
+                    supply = supply_raw / (10 ** decimals)
+                    result["chain_supply"][chain_name] = supply
+                    total_supply += supply
+                except Exception as e:
+                    print(f"Error fetching supply from {chain_name}: {e}")
+
+            result["total_supply"] = total_supply
 
         else:
             # Chainlink PoR verification (cbBTC, WBTC, etc.)
@@ -398,7 +524,7 @@ def fetch_token_distribution(config: dict) -> dict:
             else:
                 # EVM chains
                 blockscout_url = blockscout_apis.get(chain)
-                use_ankr = chain in ["arbitrum"]  # Use Ankr for chains with unreliable Blockscout
+                use_ankr = chain in ["arbitrum", "ethereum"]  # Use Ankr for chains with unreliable Blockscout
 
                 dist_result = analyze_token_distribution(
                     token_address=address,
@@ -588,6 +714,38 @@ def fetch_dex_data(config: dict) -> dict:
                 pool_result["pool_name"] = pool_name
                 pool_result["chain"] = chain
 
+            elif protocol == "fluid":
+                # Get RPC and Blockscout URLs from config
+                rpc_urls = config.get("rpc_urls", {})
+                blockscout_apis = config.get("blockscout_apis", {})
+                rpc_url = rpc_urls.get(chain)
+                blockscout_api = blockscout_apis.get(chain)
+
+                if not rpc_url or not blockscout_api:
+                    pool_result = {
+                        "protocol": "Fluid",
+                        "pool_name": pool_name,
+                        "chain": chain,
+                        "pool_address": pool_addr,
+                        "status": "error",
+                        "error": f"Missing RPC or Blockscout API for {chain}"
+                    }
+                else:
+                    pool_result = analyze_fluid_pool(
+                        pool_address=pool_addr,
+                        lp_token_address=pool.get("lp_token"),
+                        pool_name=pool_name,
+                        chain=chain,
+                        rpc_url=rpc_url,
+                        blockscout_api=blockscout_api,
+                        token0_coingecko_id=pool.get("token0_coingecko_id"),
+                        token1_coingecko_id=pool.get("token1_coingecko_id", "usd-coin"),
+                        token0_decimals=pool.get("token0_decimals", 18),
+                        token1_decimals=pool.get("token1_decimals", 6),
+                        fee_tier=pool.get("fee_tier", 0.05)
+                    )
+                    pool_result["protocol"] = "Fluid"
+
             if pool_result:
                 result["pools"].append(pool_result)
 
@@ -627,6 +785,9 @@ def fetch_slippage_data(config: dict) -> dict:
     symbol = config.get("asset_symbol", "TOKEN")
     coingecko_id = price_risk.get("token_coingecko_id")
 
+    # Get chains that have DEX pools (only check slippage where liquidity exists)
+    dex_chains = {pool.get("chain", "").lower() for pool in config.get("dex_pools", [])}
+
     # Common stablecoins to swap to
     STABLECOINS = {
         "ethereum": {
@@ -648,6 +809,10 @@ def fetch_slippage_data(config: dict) -> dict:
         token_addr = token_cfg.get("address")
 
         if chain == "solana" or not token_addr:
+            continue
+
+        # Only check slippage on chains with DEX liquidity
+        if chain not in dex_chains:
             continue
 
         if chain not in STABLECOINS:
@@ -734,6 +899,13 @@ def fetch_data_accuracy(config: dict) -> dict:
                     accuracy_result["data_source"] = "Blockscout API"
                 except Exception as e:
                     accuracy_result["error"] = str(e)
+
+            elif protocol == "fluid":
+                # Fluid uses direct on-chain calls (Fluid Resolver + Blockscout) - always 100% accurate
+                accuracy_result["accuracy_pct"] = 100.0
+                accuracy_result["total_deviation_pct"] = 0
+                accuracy_result["status"] = "success"
+                accuracy_result["data_source"] = "On-chain (Fluid Resolver + Blockscout)"
 
             result["dex_accuracy"].append(accuracy_result)
 
@@ -914,7 +1086,16 @@ def build_scoring_metrics(config: dict, fetched_data: dict) -> dict:
 
     # From fetched price data
     price_data = fetched_data.get("price_risk", {}) or {}
-    metrics["peg_deviation_pct"] = price_data.get("peg_deviation", 0.1)
+    por_data = fetched_data.get("proof_of_reserve", {}) or {}
+    verification_type = por_data.get("verification_type")
+
+    # For NAV-based tokens, use NAV vs Market deviation as peg metric
+    if verification_type == "nav_based":
+        components = por_data.get("components", {})
+        metrics["peg_deviation_pct"] = abs(components.get("nav_market_deviation_pct", 0))
+    else:
+        metrics["peg_deviation_pct"] = abs(price_data.get("peg_deviation", 0.1))
+
     metrics["volatility_annualized_pct"] = price_data.get("volatility", 50)
     metrics["var_95_pct"] = price_data.get("var_95", 5)
 
@@ -929,9 +1110,21 @@ def build_scoring_metrics(config: dict, fetched_data: dict) -> dict:
     # From fetched lending data
     lending_data = fetched_data.get("lending", {}) or {}
     lending_agg = lending_data.get("aggregated", {}) or {}
-    metrics["clr_pct"] = lending_agg.get("clr_pct", 5)
-    metrics["rlr_pct"] = lending_agg.get("rlr_pct", 10)
-    metrics["utilization_pct"] = lending_agg.get("utilization_pct", 50)
+
+    # Check if lending markets exist (has data and no error)
+    has_lending_markets = bool(lending_agg) and not lending_data.get("error")
+
+    if has_lending_markets:
+        metrics["clr_pct"] = lending_agg.get("clr_pct", 5)
+        metrics["rlr_pct"] = lending_agg.get("rlr_pct", 10)
+        metrics["utilization_pct"] = lending_agg.get("utilization_pct", 50)
+    else:
+        # No lending markets = no liquidation risk from this vector
+        metrics["clr_pct"] = 0
+        metrics["rlr_pct"] = 0
+        metrics["utilization_pct"] = 0
+
+    metrics["has_lending_markets"] = has_lending_markets
 
     # From fetched PoR data
     por_data = fetched_data.get("proof_of_reserve", {}) or {}
@@ -955,8 +1148,8 @@ def build_scoring_metrics(config: dict, fetched_data: dict) -> dict:
     lag_data = oracle_data.get("lag", {})
     lag_status = lag_data.get("status") if lag_data else None
 
-    if verification_type == "liquid_staking":
-        # Liquid staking tokens don't have cross-chain PoR feeds to compare
+    if verification_type in ("liquid_staking", "nav_based"):
+        # Liquid staking and NAV-based tokens don't have cross-chain PoR feeds to compare
         metrics["cross_chain_lag_minutes"] = 0
     elif lag_status == "success":
         # Valid cross-chain comparison - use actual lag
@@ -1899,6 +2092,12 @@ def render_tab_protocol_info():
             if contracts:
                 for name, addr in contracts.items():
                     st.markdown(f"- {name}: `{addr[:20]}...`")
+        elif verification_type == "apostro_scraper":
+            st.markdown("- Type: **NAV-Based** (Resolv)")
+            nav_oracle = por.get("nav_oracle_address")
+            if nav_oracle:
+                st.markdown(f"- NAV Oracle: `{nav_oracle[:20]}...`")
+            st.caption("Compares on-chain NAV vs market price")
         else:
             st.markdown("- Type: **Chainlink PoR**")
             chains = por.get("evm_chains", [])
@@ -2131,6 +2330,13 @@ def render_tab_lending():
 
     if not config:
         st.info("Load a configuration first.")
+        return
+
+    # Check if lending markets are configured
+    lending_configs = config.get("lending_configs", [])
+    if not lending_configs:
+        st.info(f"No lending markets configured for {config.get('asset_symbol', 'this token')}.")
+        st.caption("Liquidation risk metrics (CLR, RLR, Utilization) are set to 0% in scoring since there is no lending exposure.")
         return
 
     lending_data = fetched.get("lending") or {}
@@ -2813,40 +3019,89 @@ def render_tab_risk_metrics():
         protocol = por.get("protocol", "unknown")
         if verification_type == "liquid_staking":
             st.caption(f"Verification: Liquid Staking ({protocol.title()})")
+        elif verification_type == "nav_based":
+            st.caption(f"Verification: NAV-Based ({protocol.title()})")
         else:
             st.caption("Verification: Chainlink PoR")
 
-        reserve_ratio = por.get("reserve_ratio", 1.0)
-        st.metric("Reserve Ratio", format_percentage(reserve_ratio * 100))
-
-        if reserve_ratio >= 1.0:
-            st.success("✅ Fully Backed")
-        else:
-            st.error("⚠️ Under-collateralized")
-
-        if por.get("reserves"):
-            st.metric("Reserves", format_number(por["reserves"], 4))
-        if por.get("total_supply"):
-            st.metric("Total Supply", format_number(por["total_supply"], 4))
-
-        # Show liquid staking components if available
         components = por.get("components", {})
-        if components and verification_type == "liquid_staking":
-            with st.expander("Staking Components", expanded=False):
-                if components.get("beacon_validators"):
-                    st.metric("Active Validators", f"{components['beacon_validators']:,}")
-                if components.get("beacon_balance"):
-                    st.metric("Beacon Balance", f"{format_number(components['beacon_balance'], 2)} ETH")
-                if components.get("buffered_ether"):
-                    st.metric("Buffered Ether", f"{format_number(components['buffered_ether'], 2)} ETH")
-                if components.get("transient_validators"):
-                    st.metric("Validators in Transit", f"{components['transient_validators']:,}")
-                # wstETH specific
-                wsteth = components.get("wsteth", {})
-                if wsteth:
-                    st.markdown("**wstETH**")
-                    if wsteth.get("steth_per_wsteth"):
-                        st.metric("stETH per wstETH", f"{wsteth['steth_per_wsteth']:.6f}")
+
+        # NAV-based tokens (RLP) - show NAV vs Market comparison
+        if verification_type == "nav_based":
+            nav_price = components.get("nav_price_usd", 0)
+            market_price = components.get("market_price_usd", 0)
+            deviation = components.get("nav_market_deviation_pct", 0)
+
+            col_nav, col_mkt = st.columns(2)
+            with col_nav:
+                st.metric("NAV Price", f"${nav_price:.4f}")
+            with col_mkt:
+                st.metric("Market Price", f"${market_price:.4f}")
+
+            # Show deviation with color coding
+            if abs(deviation) < 1.0:
+                st.success(f"✅ NAV vs Market: {deviation:+.2f}% (aligned)")
+            elif abs(deviation) < 5.0:
+                st.warning(f"⚠️ NAV vs Market: {deviation:+.2f}%")
+            else:
+                st.error(f"🚨 NAV vs Market: {deviation:+.2f}% (significant)")
+
+            if components.get("rlp_tvl_usd"):
+                st.metric("Total Backing (TVL)", f"${components['rlp_tvl_usd']:,.0f}")
+
+            # Show backing breakdown
+            with st.expander("Backing Details", expanded=False):
+                collateral = components.get("collateral_pool", [])
+                if collateral:
+                    st.markdown("**Collateral Assets**")
+                    for asset in collateral[:5]:
+                        pct = asset.get("percentage", 0)
+                        val = asset.get("value", 0)
+                        st.text(f"  {asset.get('asset', '?')}: {pct:.1f}% (${val:,.0f})")
+
+                locations = components.get("backing_locations", [])
+                if locations:
+                    st.markdown("**Backing Locations**")
+                    for loc in locations[:5]:
+                        pct = loc.get("percentage", 0)
+                        val = loc.get("value", 0)
+                        st.text(f"  {loc.get('location', '?')}: {pct:.1f}% (${val:,.0f})")
+
+                if components.get("page_timestamp"):
+                    st.caption(f"Data from: {components['page_timestamp']}")
+
+        else:
+            # Traditional reserve ratio display (Chainlink PoR, liquid staking)
+            reserve_ratio = por.get("reserve_ratio", 1.0)
+            st.metric("Reserve Ratio", format_percentage(reserve_ratio * 100))
+
+            if reserve_ratio >= 1.0:
+                st.success("✅ Fully Backed")
+            else:
+                st.error("⚠️ Under-collateralized")
+
+            if por.get("reserves"):
+                st.metric("Reserves", format_number(por["reserves"], 4))
+            if por.get("total_supply"):
+                st.metric("Total Supply", format_number(por["total_supply"], 4))
+
+            # Show liquid staking components if available
+            if components and verification_type == "liquid_staking":
+                with st.expander("Staking Components", expanded=False):
+                    if components.get("beacon_validators"):
+                        st.metric("Active Validators", f"{components['beacon_validators']:,}")
+                    if components.get("beacon_balance"):
+                        st.metric("Beacon Balance", f"{format_number(components['beacon_balance'], 2)} ETH")
+                    if components.get("buffered_ether"):
+                        st.metric("Buffered Ether", f"{format_number(components['buffered_ether'], 2)} ETH")
+                    if components.get("transient_validators"):
+                        st.metric("Validators in Transit", f"{components['transient_validators']:,}")
+                    # wstETH specific
+                    wsteth = components.get("wsteth", {})
+                    if wsteth:
+                        st.markdown("**wstETH**")
+                        if wsteth.get("steth_per_wsteth"):
+                            st.metric("stETH per wstETH", f"{wsteth['steth_per_wsteth']:.6f}")
 
     with col2:
         st.subheader("Price Risk")
