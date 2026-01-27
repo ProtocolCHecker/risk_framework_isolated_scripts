@@ -1550,7 +1550,7 @@ def render_tab_methodology_scoring():
     # --------------------------------------------------------------------------
     # Category 1: Smart Contract Risk
     # --------------------------------------------------------------------------
-    with st.expander("🔐 Smart Contract Risk (10% weight)", expanded=False):
+    with st.expander("🔐 Smart Contract Risk", expanded=False):
         st.markdown("""
         **Justification:** Lower weight for battle-tested code. DeFi Score allocates 45% for novel protocols, reduced for proven codebases.
 
@@ -1615,7 +1615,7 @@ def render_tab_methodology_scoring():
     # --------------------------------------------------------------------------
     # Category 2: Counterparty Risk
     # --------------------------------------------------------------------------
-    with st.expander("🏢 Counterparty Risk (25% weight)", expanded=False):
+    with st.expander("🏢 Counterparty Risk", expanded=False):
         st.markdown("""
         **Justification:** Critical for assets with centralized custody or issuance. Aligned with DeFi Score's centralization risk and Aave's counterparty pillar.
 
@@ -1695,7 +1695,7 @@ def render_tab_methodology_scoring():
     # --------------------------------------------------------------------------
     # Category 3: Market Risk
     # --------------------------------------------------------------------------
-    with st.expander("📊 Market Risk (15% weight)", expanded=False):
+    with st.expander("📊 Market Risk", expanded=False):
         st.markdown("""
         **Justification:** Peg deviation and volatility matter for wrapped/synthetic assets. Based on Aave's market risk category.
 
@@ -1751,7 +1751,7 @@ def render_tab_methodology_scoring():
     # --------------------------------------------------------------------------
     # Category 4: Liquidity Risk
     # --------------------------------------------------------------------------
-    with st.expander("💧 Liquidity Risk (15% weight)", expanded=False):
+    with st.expander("💧 Liquidity Risk", expanded=False):
         st.markdown("""
         **Justification:** Essential for redemption capability and DeFi utility. Gauntlet emphasizes slippage analysis for liquidation efficiency.
 
@@ -1805,7 +1805,7 @@ def render_tab_methodology_scoring():
     # --------------------------------------------------------------------------
     # Category 5: Collateral Risk
     # --------------------------------------------------------------------------
-    with st.expander("🏦 Collateral Risk (10% weight)", expanded=False):
+    with st.expander("🏦 Collateral Risk", expanded=False):
         st.markdown("""
         **Justification:** Secondary risk - depends on DeFi protocol usage. Based on Chaos Labs' cascade liquidation framework.
 
@@ -1860,7 +1860,7 @@ def render_tab_methodology_scoring():
     # --------------------------------------------------------------------------
     # Category 6: Reserve & Oracle Risk
     # --------------------------------------------------------------------------
-    with st.expander("🔮 Reserve & Oracle Risk (25% weight)", expanded=False):
+    with st.expander("🔮 Reserve & Oracle Risk", expanded=False):
         st.markdown("""
         **Justification:** Fundamental to wrapped asset integrity. S&P SSA and Moody's emphasize reserve quality as primary factor.
 
