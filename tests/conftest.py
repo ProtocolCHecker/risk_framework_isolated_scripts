@@ -279,6 +279,177 @@ def mock_dex_pool_data() -> Dict[str, Any]:
 
 
 # =============================================================================
+# FRACTIONAL RESERVE FIXTURES
+# =============================================================================
+
+@pytest.fixture
+def sample_cusd_config(project_root: Path) -> Dict[str, Any]:
+    """Load the cUSD example configuration."""
+    config_path = project_root / "example_cusd_config.json"
+    with open(config_path, "r") as f:
+        config = json.load(f)
+    return config
+
+
+@pytest.fixture
+def fractional_reserve_por_config() -> Dict[str, Any]:
+    """Proof of reserve config for fractional reserve testing."""
+    return {
+        "verification_type": "fractional_reserve",
+        "vault_address": "0xcCcc62962d17b8914c62D74FfB843d73B2a3cccC",
+        "chain": "ethereum",
+        "token_coingecko_id": "cap-usd",
+        "backing_assets": [
+            {
+                "symbol": "USDC",
+                "address": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+                "decimals": 6,
+                "max_allocation_pct": 40
+            },
+            {
+                "symbol": "USDT",
+                "address": "0xdAC17F958D2ee523a2206206994597C13D831ec7",
+                "decimals": 6,
+                "max_allocation_pct": 40
+            }
+        ],
+        "price_oracle": {
+            "address": "0x9A5a3c3Ed0361505cC1D4e824B3854De5724434A",
+            "decimals": 8,
+            "type": "redstone",
+            "max_staleness_seconds": 3600
+        },
+        "risk_thresholds": {
+            "min_backing_ratio_pct": 100,
+            "max_utilization_pct": 80,
+            "max_single_asset_pct": 50
+        }
+    }
+
+
+@pytest.fixture
+def mock_fractional_reserve_data() -> Dict[str, Any]:
+    """Sample fractional reserve data for testing."""
+    return {
+        "status": "success",
+        "total_supply": 443_000_000.0,
+        "backing_assets": [
+            {
+                "symbol": "USDC",
+                "address": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+                "total_supplies": 438_000_000.0,
+                "total_borrows": 20_000_000.0,
+                "utilization_pct": 4.57,
+                "allocation_pct": 100.0
+            }
+        ],
+        "total_reserves_usd": 438_000_000.0,
+        "total_borrows_usd": 20_000_000.0,
+        "available_liquidity_usd": 418_000_000.0,
+        "backing_ratio_pct": 98.87,
+        "overall_utilization_pct": 4.57,
+        "oracle_price": 0.9997,
+        "oracle_timestamp": 1706400000,
+        "is_fully_backed": False,
+        "risk_flags": ["SLIGHT_UNDERCOLLATERALIZATION"]
+    }
+
+
+@pytest.fixture
+def mock_fractional_reserve_healthy() -> Dict[str, Any]:
+    """Healthy fractional reserve data (no risk flags)."""
+    return {
+        "status": "success",
+        "total_supply": 100_000_000.0,
+        "backing_assets": [
+            {
+                "symbol": "USDC",
+                "total_supplies": 60_000_000.0,
+                "total_borrows": 5_000_000.0,
+                "utilization_pct": 8.33,
+                "allocation_pct": 55.0
+            },
+            {
+                "symbol": "USDT",
+                "total_supplies": 50_000_000.0,
+                "total_borrows": 3_000_000.0,
+                "utilization_pct": 6.0,
+                "allocation_pct": 45.0
+            }
+        ],
+        "total_reserves_usd": 110_000_000.0,
+        "total_borrows_usd": 8_000_000.0,
+        "available_liquidity_usd": 102_000_000.0,
+        "backing_ratio_pct": 110.0,
+        "overall_utilization_pct": 7.27,
+        "oracle_price": 1.0001,
+        "oracle_timestamp": 1706400000,
+        "is_fully_backed": True,
+        "risk_flags": []
+    }
+
+
+@pytest.fixture
+def mock_vault_contract():
+    """Mock vault contract for fractional reserve Web3 testing."""
+    mock = MagicMock()
+
+    # Mock totalSupply() - returns 443M tokens with 18 decimals
+    mock.functions.totalSupply.return_value.call.return_value = 443_000_000 * 10**18
+
+    # Mock totalSupplies(asset) - returns 438M USDC with 6 decimals
+    mock.functions.totalSupplies.return_value.call.return_value = 438_000_000 * 10**6
+
+    # Mock totalBorrows(asset) - returns 20M USDC with 6 decimals
+    mock.functions.totalBorrows.return_value.call.return_value = 20_000_000 * 10**6
+
+    return mock
+
+
+@pytest.fixture
+def mock_oracle_contract():
+    """Mock Chainlink-compatible oracle contract."""
+    import time
+    mock = MagicMock()
+
+    # Mock latestRoundData() - returns price of $0.9997 with 8 decimals
+    current_time = int(time.time())
+    mock.functions.latestRoundData.return_value.call.return_value = (
+        1,                    # roundId
+        99970000,             # answer ($0.9997 * 10^8)
+        current_time - 300,   # startedAt (5 minutes ago)
+        current_time - 300,   # updatedAt (5 minutes ago)
+        1                     # answeredInRound
+    )
+
+    mock.functions.decimals.return_value.call.return_value = 8
+
+    return mock
+
+
+@pytest.fixture
+def mock_oracle_stale():
+    """Mock oracle contract with stale data (>1 hour old)."""
+    import time
+    mock = MagicMock()
+
+    current_time = int(time.time())
+    stale_time = current_time - 7200  # 2 hours ago
+
+    mock.functions.latestRoundData.return_value.call.return_value = (
+        1,
+        99970000,
+        stale_time,
+        stale_time,
+        1
+    )
+
+    mock.functions.decimals.return_value.call.return_value = 8
+
+    return mock
+
+
+# =============================================================================
 # THRESHOLD FIXTURES
 # =============================================================================
 

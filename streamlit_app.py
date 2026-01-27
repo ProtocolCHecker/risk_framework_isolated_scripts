@@ -428,6 +428,43 @@ def fetch_proof_of_reserve(config: dict) -> dict:
 
             result["total_supply"] = total_supply
 
+        elif verification_type == "fractional_reserve":
+            # Fractional reserve verification (cUSD, PSM-style stablecoins)
+            from fractional_reserve import fetch_fractional_reserve_data
+
+            # Add token_decimals to config if not in por_config
+            fr_config = {**por_config}
+            if "token_decimals" not in fr_config:
+                fr_config["token_decimals"] = config.get("token_decimals", 18)
+
+            fr_result = fetch_fractional_reserve_data(fr_config, rpc_urls)
+
+            result["protocol"] = "fractional_reserve"
+
+            if fr_result.get("status") == "success":
+                result["reserve_ratio"] = fr_result.get("backing_ratio_pct", 100.0) / 100.0
+                result["reserves"] = fr_result.get("total_reserves_usd", 0)
+                result["total_supply"] = fr_result.get("total_supply", 0)
+                result["is_fully_backed"] = fr_result.get("is_fully_backed", True)
+
+                # Store fractional reserve specific data
+                result["components"] = {
+                    "backing_assets": fr_result.get("backing_assets", []),
+                    "total_borrows_usd": fr_result.get("total_borrows_usd", 0),
+                    "available_liquidity_usd": fr_result.get("available_liquidity_usd", 0),
+                    "backing_ratio_pct": fr_result.get("backing_ratio_pct", 0),
+                    "overall_utilization_pct": fr_result.get("overall_utilization_pct", 0),
+                    "oracle_price": fr_result.get("oracle_price"),
+                    "oracle_timestamp": fr_result.get("oracle_timestamp"),
+                    "risk_flags": fr_result.get("risk_flags", [])
+                }
+
+                # Set chain supply (single chain for now)
+                chain = por_config.get("chain", "ethereum").lower()
+                result["chain_supply"][chain] = fr_result.get("total_supply", 0)
+            else:
+                result["error"] = fr_result.get("error", "Unknown error")
+
         else:
             # Chainlink PoR verification (cbBTC, WBTC, etc.)
             token_addresses = config.get("token_addresses", [])
@@ -2113,6 +2150,16 @@ def render_tab_protocol_info():
             if nav_oracle:
                 st.markdown(f"- NAV Oracle: `{nav_oracle[:20]}...`")
             st.caption("Compares on-chain NAV vs market price")
+        elif verification_type == "fractional_reserve":
+            st.markdown("- Type: **Fractional Reserve** (PSM)")
+            vault_addr = por.get("vault_address")
+            if vault_addr:
+                st.markdown(f"- Vault: `{vault_addr[:20]}...`")
+            backing_assets = por.get("backing_assets", [])
+            if backing_assets:
+                asset_symbols = [a.get("symbol", "?") for a in backing_assets]
+                st.markdown(f"- Backing: {', '.join(asset_symbols)}")
+            st.caption("Queries vault for supplies/borrows per asset")
         else:
             st.markdown("- Type: **Chainlink PoR**")
             chains = por.get("evm_chains", [])
@@ -3036,6 +3083,8 @@ def render_tab_risk_metrics():
             st.caption(f"Verification: Liquid Staking ({protocol.title()})")
         elif verification_type == "nav_based":
             st.caption(f"Verification: NAV-Based ({protocol.title()})")
+        elif verification_type == "fractional_reserve" or protocol == "fractional_reserve":
+            st.caption("Verification: Fractional Reserve (PSM)")
         else:
             st.caption("Verification: Chainlink PoR")
 
@@ -3084,6 +3133,60 @@ def render_tab_risk_metrics():
 
                 if components.get("page_timestamp"):
                     st.caption(f"Data from: {components['page_timestamp']}")
+
+        elif verification_type == "fractional_reserve" or protocol == "fractional_reserve":
+            # Fractional Reserve (PSM) display
+            backing_ratio = components.get("backing_ratio_pct", por.get("reserve_ratio", 1.0) * 100)
+            utilization = components.get("overall_utilization_pct", 0)
+
+            col_br, col_util = st.columns(2)
+            with col_br:
+                st.metric("Backing Ratio", f"{backing_ratio:.2f}%")
+            with col_util:
+                st.metric("Utilization", f"{utilization:.2f}%")
+
+            # Backing status
+            if backing_ratio >= 100.0:
+                st.success("✅ Fully Backed")
+            elif backing_ratio >= 95.0:
+                st.warning(f"⚠️ Slightly Under-collateralized ({backing_ratio:.2f}%)")
+            else:
+                st.error(f"🚨 Under-collateralized ({backing_ratio:.2f}%)")
+
+            # Risk flags
+            risk_flags = components.get("risk_flags", [])
+            if risk_flags:
+                st.warning(f"Risk Flags: {', '.join(risk_flags)}")
+
+            # Oracle price
+            oracle_price = components.get("oracle_price")
+            if oracle_price:
+                deviation = abs(oracle_price - 1.0) * 100
+                if deviation < 1.0:
+                    st.success(f"✅ Oracle Price: ${oracle_price:.4f} (on peg)")
+                else:
+                    st.warning(f"⚠️ Oracle Price: ${oracle_price:.4f} ({deviation:.2f}% deviation)")
+
+            # Backing assets breakdown
+            backing_assets = components.get("backing_assets", [])
+            if backing_assets:
+                with st.expander("Backing Assets", expanded=False):
+                    for asset in backing_assets:
+                        symbol = asset.get("symbol", "?")
+                        supplies = asset.get("total_supplies", 0)
+                        borrows = asset.get("total_borrows", 0)
+                        util_pct = asset.get("utilization_pct", 0)
+                        alloc_pct = asset.get("allocation_pct", 0)
+                        st.markdown(f"**{symbol}** ({alloc_pct:.1f}% allocation)")
+                        st.text(f"  Supplies: ${supplies:,.0f}")
+                        st.text(f"  Borrows: ${borrows:,.0f}")
+                        st.text(f"  Utilization: {util_pct:.2f}%")
+
+                    # Totals
+                    st.divider()
+                    st.text(f"Total Reserves: ${components.get('total_reserves_usd', por.get('reserves', 0)):,.0f}")
+                    st.text(f"Total Borrows: ${components.get('total_borrows_usd', 0):,.0f}")
+                    st.text(f"Available Liquidity: ${components.get('available_liquidity_usd', 0):,.0f}")
 
         else:
             # Traditional reserve ratio display (Chainlink PoR, liquid staking)
