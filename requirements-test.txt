@@ -1,0 +1,19 @@
+# Test dependencies for DeFi Risk Assessment Framework
+# Install with: pip install -r requirements-test.txt
+
+# Core testing framework
+pytest>=8.0.0
+pytest-cov>=4.1.0
+pytest-asyncio>=0.23.0
+pytest-timeout>=2.2.0
+
+# Test utilities
+faker>=22.0.0
+
+# Mocking
+responses>=0.24.0
+
+# Code quality (optional but recommended)
+# pytest-xdist>=3.5.0  # Parallel test execution
+# pytest-randomly>=3.15.0  # Randomize test order
+# hypothesis>=6.98.0  # Property-based testing

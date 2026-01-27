@@ -1,0 +1,213 @@
+{
+  "asset_name": "Coinbase Wrapped BTC",
+  "asset_symbol": "cbBTC",
+  "asset_type": "wrapped_btc",
+  "underlying": "BTC",
+  "token_decimals": 8,
+
+  "token_addresses": [
+    {"chain": "ethereum", "address": "0xcbB7C0000aB88B473b1f5aFd9ef808440eed33Bf"},
+    {"chain": "base", "address": "0xcbB7C0000aB88B473b1f5aFd9ef808440eed33Bf"},
+    {"chain": "arbitrum", "address": "0xcbB7C0000aB88B473b1f5aFd9ef808440eed33Bf"},
+    {"chain": "solana", "address": "cbbtcf3aa214zXHbiAZQwf4122FBYbraNdFqgw4iMij"}
+  ],
+
+  "solana_token": "cbbtcf3aa214zXHbiAZQwf4122FBYbraNdFqgw4iMij",
+
+  "lending_configs": [
+    {
+      "protocol": "aave",
+      "chain": "ethereum",
+      "token_address": "0xcbB7C0000aB88B473b1f5aFd9ef808440eed33Bf",
+      "pool": "0x87870Bca3F3fD6335C3F4ce8392D69350B4fA4E2",
+      "data_provider": "0x7B4EB56E7CD4b454BA8ff71E4518426369a138a3"
+    },
+    {
+      "protocol": "aave",
+      "chain": "base",
+      "token_address": "0xcbB7C0000aB88B473b1f5aFd9ef808440eed33Bf",
+      "pool": "0xA238Dd80C259a72e81d7e4664a9801593F98d1c5",
+      "data_provider": "0x0F43731EB8d45A581f4a36DD74F5f358bc90C73A"
+    },
+    {
+      "protocol": "compound",
+      "chain": "ethereum",
+      "token_address": "0xcbB7C0000aB88B473b1f5aFd9ef808440eed33Bf",
+      "comet_address": "0xc3d688B66703497DAA19211EEdff47f25384cdc3",
+      "market_name": "USDC",
+      "subgraph_id": "5nwMCSHaTqG3Kd2gHznbTXEnZ9QNWsssQfbHhDqQSQFp"
+    },
+    {
+      "protocol": "compound",
+      "chain": "ethereum",
+      "token_address": "0xcbB7C0000aB88B473b1f5aFd9ef808440eed33Bf",
+      "comet_address": "0xA17581A9E3356d9A858b789D68B4d866e593aE94",
+      "market_name": "WETH",
+      "subgraph_id": "5nwMCSHaTqG3Kd2gHznbTXEnZ9QNWsssQfbHhDqQSQFp"
+    },
+    {
+      "protocol": "compound",
+      "chain": "base",
+      "token_address": "0xcbB7C0000aB88B473b1f5aFd9ef808440eed33Bf",
+      "comet_address": "0xb125E6687d4313864e53df431d5425969c15Eb2F",
+      "market_name": "USDC",
+      "subgraph_id": "2hcXhs36pTBDVUmk5K2Zkr6N4UYGwaHuco2a6jyTsijo"
+    },
+    {
+      "protocol": "compound",
+      "chain": "base",
+      "token_address": "0xcbB7C0000aB88B473b1f5aFd9ef808440eed33Bf",
+      "comet_address": "0x46e6b214b524310239732d51387075e0e70970bf",
+      "market_name": "WETH",
+      "subgraph_id": "2hcXhs36pTBDVUmk5K2Zkr6N4UYGwaHuco2a6jyTsijo"
+    }
+  ],
+
+  "dex_pools": [
+    {
+      "protocol": "uniswap",
+      "chain": "ethereum",
+      "pool_address": "0xe8f7c89c5efa061e340f2d2f206ec78fd8f7e124",
+      "pool_name": "WBTC/cbBTC",
+      "subgraph_id": "5zvR82QoaXYFyDEKLZ9t6v9adgnptxYpKpSbxtgVENFV"
+    },
+    {
+      "protocol": "uniswap",
+      "chain": "base",
+      "pool_address": "0x8c7080564b5a792a33ef2fd473fba6364d5495e5",
+      "pool_name": "cbBTC/WETH",
+      "subgraph_id": "43Hwfi3dJSoGpyas9VwNoDAv55yjgGrPpNSmbQZArzMG"
+    },
+    {
+      "protocol": "uniswap",
+      "chain": "base",
+      "pool_address": "0xfbb6eed8e7aa03b138556eedaf5d271a5e1e43ef",
+      "pool_name": "cbBTC/USDC",
+      "subgraph_id": "43Hwfi3dJSoGpyas9VwNoDAv55yjgGrPpNSmbQZArzMG"
+    },
+    {
+      "protocol": "pancakeswap",
+      "chain": "base",
+      "pool_address": "0xb94b22332ABf5f89877A14Cc88f2aBC48c34B3Df",
+      "pool_name": "cbBTC/USDC",
+      "subgraph_id": "BHWNsedAHtmTCzXxCCDfhPmm6iN9rxUhoRHdHKyujic3"
+    },
+    {
+      "protocol": "curve",
+      "chain": "ethereum",
+      "pool_address": "0x839d6bDeDFF886404A6d7a788ef241e4e28F4802",
+      "pool_name": "cbBTC/wBTC",
+      "gauge_address": "0xc62b10c61bf060ebf40a60859dcdbea025fc7e2e",
+      "n_coins": 2
+    }
+  ],
+
+  "proof_of_reserve": {
+    "verification_type": "chainlink_por",
+    "por_scope": "global",
+    "evm_chains": [
+      {
+        "name": "ethereum",
+        "por": "0xcBe87Dc0Cf9d807848a3E703B01A90B28eCFb2a7",
+        "token": "0xcbB7C0000aB88B473b1f5aFd9ef808440eed33Bf"
+      },
+      {
+        "name": "base",
+        "por": "0x0F8E057D1D7b282EF968D26E9cB432617dF52519",
+        "token": "0xcbB7C0000aB88B473b1f5aFd9ef808440eed33Bf"
+      }
+    ],
+    "solana_token": "cbbtcf3aa214zXHbiAZQwf4122FBYbraNdFqgw4iMij"
+  },
+
+  "price_risk": {
+    "token_coingecko_id": "coinbase-wrapped-btc",
+    "underlying_coingecko_id": "bitcoin"
+  },
+
+  "oracle_lag": {
+    "por_feed_1": {"chain": "ethereum", "address": "0xcBe87Dc0Cf9d807848a3E703B01A90B28eCFb2a7"},
+    "por_feed_2": {"chain": "base", "address": "0x0F8E057D1D7b282EF968D26E9cB432617dF52519"}
+  },
+
+  "oracle_freshness": {
+    "price_feeds": [
+      {"chain": "ethereum", "address": "0x2665701293fCbEB223D11A08D826563EDcCE423A", "name": "cbBTC/USD"},
+      {"chain": "ethereum", "address": "0xF4030086522a5bEEa4988F8cA5B36dbC97BeE88c", "name": "BTC/USD"}
+    ]
+  },
+
+  "audit_data": {
+    "auditor": "OpenZeppelin",
+    "date": "2022-08",
+    "issues": {
+      "critical": 0,
+      "high": 0,
+      "medium": 0,
+      "low": 0
+    },
+    "all_issues_resolved": true
+  },
+
+  "deployment_date": "2024-09-09",
+  "incidents": [],
+
+  "multisig_configs": [
+    {
+      "role_name": "owner",
+      "is_multisig": false,
+      "is_eoa": true,
+      "address": "0xCe56D20689D836EC7A728CEb94A15746696c16e6",
+      "threshold": 1,
+      "owners_count": 1
+    },
+    {
+      "role_name": "pauser",
+      "is_multisig": false,
+      "is_eoa": true,
+      "address": "0x1ac78dfcAE082E9fe286D1ccb12C17a3e906B906",
+      "threshold": 1,
+      "owners_count": 1
+    },
+    {
+      "role_name": "minter",
+      "is_multisig": false,
+      "is_eoa": true,
+      "address": "0x1302dFb1F806398f48650c75ab0fDA9a0186f47B",
+      "threshold": 1,
+      "owners_count": 1
+    },
+    {
+      "role_name": "blacklister",
+      "is_multisig": false,
+      "is_eoa": true,
+      "address": "0x5130bF38bF5342aa06CC79b8Cc198cCE832b01Af",
+      "threshold": 1,
+      "owners_count": 1
+    }
+  ],
+
+  "has_timelock": false,
+  "timelock_hours": 0,
+  "custody_model": "regulated_insured",
+  "custodian": "Coinbase Custody Trust",
+  "has_insurance": true,
+  "insurance_provider": "Coinbase",
+  "has_blacklist": true,
+  "blacklist_control": "eoa",
+
+  "critical_roles": ["owner", "minter"],
+  "role_weights": {"owner": 5, "minter": 4, "pauser": 3, "blacklister": 2},
+
+  "rpc_urls": {
+    "ethereum": "https://lb.drpc.live/ethereum/AtiZvaKOcUmKq-AbTta3bRagNNpNbjkR8LQsEklbR4ac",
+    "arbitrum": "https://lb.drpc.live/arbitrum/AtiZvaKOcUmKq-AbTta3bRagNNpNbjkR8LQsEklbR4ac",
+    "base": "https://lb.drpc.live/base/AtiZvaKOcUmKq-AbTta3bRagNNpNbjkR8LQsEklbR4ac"
+  },
+
+  "blockscout_apis": {
+    "ethereum": "https://eth.blockscout.com/api/v2",
+    "base": "https://base.blockscout.com/api/v2",
+    "arbitrum": "https://arbitrum.blockscout.com/api/v2"
+  }
+}

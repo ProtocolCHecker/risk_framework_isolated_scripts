@@ -1,0 +1,41 @@
+[tool.pytest.ini_options]
+# Alternative pytest configuration in pyproject.toml
+# This mirrors pytest.ini settings
+
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+
+markers = [
+    "unit: Unit tests (fast, isolated, no external dependencies)",
+    "integration: Integration tests (may hit external APIs or require mocks)",
+    "slow: Tests that take longer than 5 seconds",
+    "smoke: Critical path tests for quick validation",
+    "scoring: Tests for the scoring engine",
+    "fetcher: Tests for data fetching modules",
+]
+
+addopts = "-v --tb=short --strict-markers -ra"
+
+filterwarnings = [
+    "ignore::DeprecationWarning",
+    "ignore::PendingDeprecationWarning",
+]
+
+[tool.coverage.run]
+# Coverage configuration
+source = ["."]
+omit = [
+    "tests/*",
+    "venv/*",
+    "__pycache__/*",
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+]
