@@ -14,6 +14,7 @@ try:
     from .thresholds import (
         GRADE_SCALE,
         CATEGORY_WEIGHTS,
+        DEFAULT_CATEGORY_WEIGHTS,
         SMART_CONTRACT_THRESHOLDS,
         COUNTERPARTY_THRESHOLDS,
         MARKET_THRESHOLDS,
@@ -21,6 +22,7 @@ try:
         COLLATERAL_THRESHOLDS,
         RESERVE_ORACLE_THRESHOLDS,
         CIRCUIT_BREAKERS,
+        DEFAULT_CIRCUIT_BREAKERS_ENABLED,
         DAO_VOTING_THRESHOLDS,
     )
     from .primary_checks import run_primary_checks, CheckStatus
@@ -28,6 +30,7 @@ except ImportError:
     from thresholds import (
         GRADE_SCALE,
         CATEGORY_WEIGHTS,
+        DEFAULT_CATEGORY_WEIGHTS,
         SMART_CONTRACT_THRESHOLDS,
         COUNTERPARTY_THRESHOLDS,
         MARKET_THRESHOLDS,
@@ -35,6 +38,7 @@ except ImportError:
         COLLATERAL_THRESHOLDS,
         RESERVE_ORACLE_THRESHOLDS,
         CIRCUIT_BREAKERS,
+        DEFAULT_CIRCUIT_BREAKERS_ENABLED,
         DAO_VOTING_THRESHOLDS,
     )
     from primary_checks import run_primary_checks, CheckStatus
@@ -139,7 +143,8 @@ def interpolate_score(value: float, thresholds: list, value_key: str, ascending:
 def calculate_smart_contract_score(
     audit_data: dict,
     deployment_date: datetime,
-    incidents: list = None
+    incidents: list = None,
+    weight_override: float = None
 ) -> Dict[str, Any]:
     """
     Calculate Smart Contract Risk score.
@@ -148,6 +153,7 @@ def calculate_smart_contract_score(
         audit_data: Dict with auditor, date, issues (critical, high, medium, low)
         deployment_date: Contract deployment date
         incidents: List of security incidents
+        weight_override: Optional custom weight (0.0-1.0) to override default
 
     Returns:
         Dict with score, breakdown, and justifications
@@ -308,12 +314,15 @@ def calculate_smart_contract_score(
         breakdown["incidents"]["score"] * breakdown["incidents"]["weight"]
     )
 
+    # Use weight_override if provided, otherwise use default
+    final_weight = weight_override if weight_override is not None else DEFAULT_CATEGORY_WEIGHTS["smart_contract"]["weight"]
+
     return {
         "category": "Smart Contract Risk",
         "score": round(total_score, 1),
         "grade": score_to_grade(total_score),
-        "weight": CATEGORY_WEIGHTS["smart_contract"]["weight"],
-        "weight_justification": CATEGORY_WEIGHTS["smart_contract"]["justification"],
+        "weight": final_weight,
+        "weight_justification": DEFAULT_CATEGORY_WEIGHTS["smart_contract"]["justification"],
         "breakdown": breakdown,
     }
 
@@ -326,7 +335,8 @@ def calculate_counterparty_score(
     has_blacklist: bool = False,
     blacklist_control: str = "none",
     critical_roles: list = None,
-    role_weights: dict = None
+    role_weights: dict = None,
+    weight_override: float = None
 ) -> Dict[str, Any]:
     """
     Calculate Counterparty Risk score.
@@ -340,6 +350,7 @@ def calculate_counterparty_score(
         blacklist_control: Who controls blacklist (none, governance, multisig, eoa)
         critical_roles: List of critical admin roles to check (default: ["owner", "admin"])
         role_weights: Dict of role -> weight for scoring (default weights provided)
+        weight_override: Optional custom weight (0.0-1.0) to override default
     """
     breakdown = {}
 
@@ -492,12 +503,15 @@ def calculate_counterparty_score(
         for k in breakdown
     )
 
+    # Use weight_override if provided, otherwise use default
+    final_weight = weight_override if weight_override is not None else DEFAULT_CATEGORY_WEIGHTS["counterparty"]["weight"]
+
     return {
         "category": "Counterparty Risk",
         "score": round(total_score, 1),
         "grade": score_to_grade(total_score),
-        "weight": CATEGORY_WEIGHTS["counterparty"]["weight"],
-        "weight_justification": CATEGORY_WEIGHTS["counterparty"]["justification"],
+        "weight": final_weight,
+        "weight_justification": DEFAULT_CATEGORY_WEIGHTS["counterparty"]["justification"],
         "breakdown": breakdown,
     }
 
@@ -505,7 +519,8 @@ def calculate_counterparty_score(
 def calculate_market_score(
     peg_deviation_pct: float,
     volatility_annualized_pct: float,
-    var_95_pct: float
+    var_95_pct: float,
+    weight_override: float = None
 ) -> Dict[str, Any]:
     """
     Calculate Market Risk score.
@@ -555,12 +570,15 @@ def calculate_market_score(
         for k in breakdown
     )
 
+    # Use weight_override if provided, otherwise use default
+    final_weight = weight_override if weight_override is not None else DEFAULT_CATEGORY_WEIGHTS["market"]["weight"]
+
     return {
         "category": "Market Risk",
         "score": round(total_score, 1),
         "grade": score_to_grade(total_score),
-        "weight": CATEGORY_WEIGHTS["market"]["weight"],
-        "weight_justification": CATEGORY_WEIGHTS["market"]["justification"],
+        "weight": final_weight,
+        "weight_justification": DEFAULT_CATEGORY_WEIGHTS["market"]["justification"],
         "breakdown": breakdown,
     }
 
@@ -568,7 +586,8 @@ def calculate_market_score(
 def calculate_liquidity_score(
     slippage_100k_pct: float,
     slippage_500k_pct: float,
-    hhi: float
+    hhi: float,
+    weight_override: float = None
 ) -> Dict[str, Any]:
     """
     Calculate Liquidity Risk score.
@@ -577,6 +596,7 @@ def calculate_liquidity_score(
         slippage_100k_pct: Slippage for $100K trade
         slippage_500k_pct: Slippage for $500K trade
         hhi: Herfindahl-Hirschman Index (0-10000)
+        weight_override: Optional custom weight (0.0-1.0) to override default
     """
     breakdown = {}
 
@@ -618,12 +638,15 @@ def calculate_liquidity_score(
         for k in breakdown
     )
 
+    # Use weight_override if provided, otherwise use default
+    final_weight = weight_override if weight_override is not None else DEFAULT_CATEGORY_WEIGHTS["liquidity"]["weight"]
+
     return {
         "category": "Liquidity Risk",
         "score": round(total_score, 1),
         "grade": score_to_grade(total_score),
-        "weight": CATEGORY_WEIGHTS["liquidity"]["weight"],
-        "weight_justification": CATEGORY_WEIGHTS["liquidity"]["justification"],
+        "weight": final_weight,
+        "weight_justification": DEFAULT_CATEGORY_WEIGHTS["liquidity"]["justification"],
         "breakdown": breakdown,
     }
 
@@ -631,7 +654,8 @@ def calculate_liquidity_score(
 def calculate_collateral_score(
     clr_pct: float,
     rlr_pct: float,
-    utilization_pct: float
+    utilization_pct: float,
+    weight_override: float = None
 ) -> Dict[str, Any]:
     """
     Calculate Collateral Risk score (lending market metrics).
@@ -640,6 +664,7 @@ def calculate_collateral_score(
         clr_pct: Cascade Liquidation Risk percentage
         rlr_pct: Recursive Lending Ratio percentage
         utilization_pct: Pool utilization percentage
+        weight_override: Optional custom weight (0.0-1.0) to override default
     """
     breakdown = {}
 
@@ -681,12 +706,15 @@ def calculate_collateral_score(
         for k in breakdown
     )
 
+    # Use weight_override if provided, otherwise use default
+    final_weight = weight_override if weight_override is not None else DEFAULT_CATEGORY_WEIGHTS["collateral"]["weight"]
+
     return {
         "category": "Collateral Risk",
         "score": round(total_score, 1),
         "grade": score_to_grade(total_score),
-        "weight": CATEGORY_WEIGHTS["collateral"]["weight"],
-        "weight_justification": CATEGORY_WEIGHTS["collateral"]["justification"],
+        "weight": final_weight,
+        "weight_justification": DEFAULT_CATEGORY_WEIGHTS["collateral"]["justification"],
         "breakdown": breakdown,
     }
 
@@ -694,7 +722,8 @@ def calculate_collateral_score(
 def calculate_reserve_oracle_score(
     reserve_ratio: float,
     oracle_freshness_minutes: float,
-    cross_chain_lag_minutes: float
+    cross_chain_lag_minutes: float,
+    weight_override: float = None
 ) -> Dict[str, Any]:
     """
     Calculate Reserve & Oracle Risk score.
@@ -703,6 +732,7 @@ def calculate_reserve_oracle_score(
         reserve_ratio: Proof of Reserves ratio (1.0 = 100%)
         oracle_freshness_minutes: Minutes since last oracle update
         cross_chain_lag_minutes: Maximum lag between chains
+        weight_override: Optional custom weight (0.0-1.0) to override default
     """
     breakdown = {}
 
@@ -751,12 +781,15 @@ def calculate_reserve_oracle_score(
         for k in breakdown
     )
 
+    # Use weight_override if provided, otherwise use default
+    final_weight = weight_override if weight_override is not None else DEFAULT_CATEGORY_WEIGHTS["reserve_oracle"]["weight"]
+
     return {
         "category": "Reserve & Oracle Risk",
         "score": round(total_score, 1),
         "grade": score_to_grade(total_score),
-        "weight": CATEGORY_WEIGHTS["reserve_oracle"]["weight"],
-        "weight_justification": CATEGORY_WEIGHTS["reserve_oracle"]["justification"],
+        "weight": final_weight,
+        "weight_justification": DEFAULT_CATEGORY_WEIGHTS["reserve_oracle"]["justification"],
         "breakdown": breakdown,
     }
 
@@ -765,23 +798,29 @@ def calculate_reserve_oracle_score(
 # OVERALL SCORE CALCULATION
 # =============================================================================
 
-def calculate_category_scores(metrics: dict) -> Dict[str, Any]:
+def calculate_category_scores(metrics: dict, custom_weights: dict = None) -> Dict[str, Any]:
     """
     Calculate all category scores from raw metrics.
 
     Args:
         metrics: Dict containing all required metrics
+        custom_weights: Optional dict of category -> weight (0.0-1.0) to override defaults.
+                       Keys: smart_contract, counterparty, market, liquidity, collateral, reserve_oracle
 
     Returns:
         Dict with all category scores and breakdowns
     """
     categories = {}
 
+    # Get weight overrides if provided
+    weights = custom_weights or {}
+
     # Smart Contract
     categories["smart_contract"] = calculate_smart_contract_score(
         audit_data=metrics.get("audit_data", {}),
         deployment_date=metrics.get("deployment_date"),
         incidents=metrics.get("incidents", []),
+        weight_override=weights.get("smart_contract"),
     )
 
     # Counterparty
@@ -794,6 +833,7 @@ def calculate_category_scores(metrics: dict) -> Dict[str, Any]:
         blacklist_control=metrics.get("blacklist_control", "none"),
         critical_roles=metrics.get("critical_roles"),
         role_weights=metrics.get("role_weights"),
+        weight_override=weights.get("counterparty"),
     )
 
     # Market
@@ -801,6 +841,7 @@ def calculate_category_scores(metrics: dict) -> Dict[str, Any]:
         peg_deviation_pct=metrics.get("peg_deviation_pct", 0),
         volatility_annualized_pct=metrics.get("volatility_annualized_pct", 50),
         var_95_pct=metrics.get("var_95_pct", 5),
+        weight_override=weights.get("market"),
     )
 
     # Liquidity
@@ -808,6 +849,7 @@ def calculate_category_scores(metrics: dict) -> Dict[str, Any]:
         slippage_100k_pct=metrics.get("slippage_100k_pct", 0.5),
         slippage_500k_pct=metrics.get("slippage_500k_pct", 1.0),
         hhi=metrics.get("hhi", 2000),
+        weight_override=weights.get("liquidity"),
     )
 
     # Collateral
@@ -815,6 +857,7 @@ def calculate_category_scores(metrics: dict) -> Dict[str, Any]:
         clr_pct=metrics.get("clr_pct", 5),
         rlr_pct=metrics.get("rlr_pct", 10),
         utilization_pct=metrics.get("utilization_pct", 50),
+        weight_override=weights.get("collateral"),
     )
 
     # Reserve & Oracle
@@ -822,6 +865,7 @@ def calculate_category_scores(metrics: dict) -> Dict[str, Any]:
         reserve_ratio=metrics.get("reserve_ratio", 1.0),
         oracle_freshness_minutes=metrics.get("oracle_freshness_minutes", 30),
         cross_chain_lag_minutes=metrics.get("cross_chain_lag_minutes", 15),
+        weight_override=weights.get("reserve_oracle"),
     )
 
     return categories
@@ -830,10 +874,20 @@ def calculate_category_scores(metrics: dict) -> Dict[str, Any]:
 def apply_circuit_breakers(
     base_score: float,
     category_scores: dict,
-    metrics: dict
+    metrics: dict,
+    circuit_breakers_enabled: dict = None
 ) -> Tuple[float, List[dict]]:
     """
     Apply circuit breakers to cap or modify the final score.
+
+    Args:
+        base_score: The weighted average score before circuit breakers
+        category_scores: Dict of category scores from calculate_category_scores
+        metrics: Original metrics dict
+        circuit_breakers_enabled: Optional dict of breaker_name -> bool to enable/disable breakers.
+                                 Keys: reserve_undercollateralized, all_admin_eoa, active_security_incident,
+                                       critical_category_failure, severe_category_weakness, no_audit
+                                 If None, all breakers are enabled (default behavior)
 
     Returns:
         Tuple of (adjusted_score, list of triggered breakers)
@@ -841,8 +895,11 @@ def apply_circuit_breakers(
     triggered = []
     score = base_score
 
+    # Use provided enabled config or default (all enabled)
+    enabled = circuit_breakers_enabled if circuit_breakers_enabled is not None else DEFAULT_CIRCUIT_BREAKERS_ENABLED
+
     # Check reserve undercollateralization
-    if metrics.get("reserve_ratio", 1.0) < 1.0:
+    if enabled.get("reserve_undercollateralized", True) and metrics.get("reserve_ratio", 1.0) < 1.0:
         breaker = CIRCUIT_BREAKERS["reserve_undercollateralized"]
         score = min(score, breaker["max_score"])
         triggered.append({
@@ -852,52 +909,54 @@ def apply_circuit_breakers(
         })
 
     # Check if critical admin roles are EOA
-    counterparty_breakdown = category_scores.get("counterparty", {}).get("breakdown", {})
-    akc = counterparty_breakdown.get("admin_key_control", {})
-    if akc.get("any_eoa") and not akc.get("all_multisig"):
-        # Check if critical roles are EOA
-        multisig_configs = metrics.get("multisig_configs", {})
-        critical_roles = metrics.get("critical_roles", ["owner", "admin"])
-        critical_eoa = any(
-            multisig_configs.get(role, {}).get("is_eoa", False)
-            for role in critical_roles
+    if enabled.get("all_admin_eoa", True):
+        counterparty_breakdown = category_scores.get("counterparty", {}).get("breakdown", {})
+        akc = counterparty_breakdown.get("admin_key_control", {})
+        if akc.get("any_eoa") and not akc.get("all_multisig"):
+            # Check if critical roles are EOA
+            multisig_configs = metrics.get("multisig_configs", {})
+            critical_roles = metrics.get("critical_roles", ["owner", "admin"])
+            critical_eoa = any(
+                multisig_configs.get(role, {}).get("is_eoa", False)
+                for role in critical_roles
+            )
+            if critical_eoa:
+                breaker = CIRCUIT_BREAKERS["all_admin_eoa"]
+                score = min(score, breaker["max_score"])
+                triggered.append({
+                    "name": "Critical Admin EOA",
+                    "effect": f"Score capped at {breaker['max_score']} (Grade {breaker['max_grade']})",
+                    "justification": breaker["justification"],
+                })
+
+    # Check for active security incident
+    if enabled.get("active_security_incident", True):
+        incidents = metrics.get("incidents", [])
+        recent_incident = any(
+            i.get("days_ago", 999) < 30 and i.get("funds_lost", 0) > 0
+            for i in incidents
         )
-        if critical_eoa:
-            breaker = CIRCUIT_BREAKERS["all_admin_eoa"]
+        if recent_incident:
+            breaker = CIRCUIT_BREAKERS["active_security_incident"]
             score = min(score, breaker["max_score"])
             triggered.append({
-                "name": "Critical Admin EOA",
+                "name": "Active Security Incident",
                 "effect": f"Score capped at {breaker['max_score']} (Grade {breaker['max_grade']})",
                 "justification": breaker["justification"],
             })
 
-    # Check for active security incident
-    incidents = metrics.get("incidents", [])
-    recent_incident = any(
-        i.get("days_ago", 999) < 30 and i.get("funds_lost", 0) > 0
-        for i in incidents
-    )
-    if recent_incident:
-        breaker = CIRCUIT_BREAKERS["active_security_incident"]
-        score = min(score, breaker["max_score"])
-        triggered.append({
-            "name": "Active Security Incident",
-            "effect": f"Score capped at {breaker['max_score']} (Grade {breaker['max_grade']})",
-            "justification": breaker["justification"],
-        })
-
-    # Check for critical category failure (any score < 25)
+    # Check for critical category failure (any score < 25) and severe weakness (< 40)
     multiplier = 1.0
     for cat_name, cat_data in category_scores.items():
         cat_score = cat_data.get("score", 50)
-        if cat_score < 25:
+        if cat_score < 25 and enabled.get("critical_category_failure", True):
             multiplier = min(multiplier, CIRCUIT_BREAKERS["critical_category_failure"]["multiplier"])
             triggered.append({
                 "name": f"Critical Failure: {cat_data.get('category', cat_name)}",
                 "effect": f"Multiplier: {CIRCUIT_BREAKERS['critical_category_failure']['multiplier']}",
                 "justification": f"{cat_data.get('category', cat_name)} score is {cat_score} (< 25). {CIRCUIT_BREAKERS['critical_category_failure']['justification']}",
             })
-        elif cat_score < 40:
+        elif cat_score < 40 and enabled.get("severe_category_weakness", True):
             multiplier = min(multiplier, CIRCUIT_BREAKERS["severe_category_weakness"]["multiplier"])
             triggered.append({
                 "name": f"Severe Weakness: {cat_data.get('category', cat_name)}",
@@ -908,20 +967,25 @@ def apply_circuit_breakers(
     score *= multiplier
 
     # Check for no audit
-    audit_data = metrics.get("audit_data")
-    if not audit_data:
-        breaker = CIRCUIT_BREAKERS["no_audit"]
-        score = min(score, breaker["max_score"])
-        triggered.append({
-            "name": "No Audit",
-            "effect": f"Score capped at {breaker['max_score']} (Grade {breaker['max_grade']})",
-            "justification": breaker["justification"],
-        })
+    if enabled.get("no_audit", True):
+        audit_data = metrics.get("audit_data")
+        if not audit_data:
+            breaker = CIRCUIT_BREAKERS["no_audit"]
+            score = min(score, breaker["max_score"])
+            triggered.append({
+                "name": "No Audit",
+                "effect": f"Score capped at {breaker['max_score']} (Grade {breaker['max_grade']})",
+                "justification": breaker["justification"],
+            })
 
     return score, triggered
 
 
-def calculate_asset_risk_score(metrics: dict) -> Dict[str, Any]:
+def calculate_asset_risk_score(
+    metrics: dict,
+    custom_weights: dict = None,
+    circuit_breakers_enabled: dict = None
+) -> Dict[str, Any]:
     """
     Calculate comprehensive asset risk score using two-stage evaluation.
 
@@ -940,6 +1004,13 @@ def calculate_asset_risk_score(metrics: dict) -> Dict[str, Any]:
             - asset_type: Type (e.g., "wrapped_btc", "stablecoin", "lst")
             - underlying: Underlying asset if applicable (e.g., "BTC", "ETH")
             - ... all other scoring metrics
+        custom_weights: Optional dict of category -> weight (0.0-1.0) to override defaults.
+                       Keys: smart_contract, counterparty, market, liquidity, collateral, reserve_oracle
+                       Weights should sum to 1.0 for meaningful results.
+        circuit_breakers_enabled: Optional dict of breaker_name -> bool to enable/disable breakers.
+                                 Keys: reserve_undercollateralized, all_admin_eoa, active_security_incident,
+                                       critical_category_failure, severe_category_weakness, no_audit
+                                 If None, all breakers are enabled (default behavior)
 
     Returns:
         Complete risk assessment with qualification status, scores, grades, and justifications
@@ -995,8 +1066,8 @@ def calculate_asset_risk_score(metrics: dict) -> Dict[str, Any]:
     # STAGE 2: SECONDARY SCORING (Weighted Categories)
     # ==========================================================================
 
-    # Calculate all category scores
-    category_scores = calculate_category_scores(metrics)
+    # Calculate all category scores with optional custom weights
+    category_scores = calculate_category_scores(metrics, custom_weights)
 
     # Calculate base score (weighted average)
     base_score = sum(
@@ -1004,9 +1075,9 @@ def calculate_asset_risk_score(metrics: dict) -> Dict[str, Any]:
         for cat_data in category_scores.values()
     )
 
-    # Apply circuit breakers
+    # Apply circuit breakers with optional enabled config
     final_score, triggered_breakers = apply_circuit_breakers(
-        base_score, category_scores, metrics
+        base_score, category_scores, metrics, circuit_breakers_enabled
     )
 
     final_score = round(final_score, 1)
@@ -1047,11 +1118,18 @@ def calculate_asset_risk_score(metrics: dict) -> Dict[str, Any]:
         "circuit_breakers": {
             "triggered": triggered_breakers,
             "score_adjusted": final_score != base_score,
+            "enabled_config": circuit_breakers_enabled if circuit_breakers_enabled else DEFAULT_CIRCUIT_BREAKERS_ENABLED,
+        },
+        "scoring_settings": {
+            "custom_weights_used": custom_weights is not None,
+            "custom_weights": custom_weights,
+            "circuit_breakers_customized": circuit_breakers_enabled is not None,
         },
         "methodology": {
             "approach": "Two-stage: Primary checks (binary) + Secondary scoring (weighted)",
             "scale": "0-100 numeric with A-F letter grades",
             "primary_checks": "3 binary pass/fail qualification criteria",
+            "weights_customized": custom_weights is not None,
         },
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }

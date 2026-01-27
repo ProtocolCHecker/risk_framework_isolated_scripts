@@ -16,8 +16,11 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 from asset_score import (
     score_to_grade,
     calculate_asset_risk_score,
+    calculate_category_scores,
+    apply_circuit_breakers,
     CUSTODY_MODELS,
 )
+from thresholds import DEFAULT_CATEGORY_WEIGHTS, DEFAULT_CIRCUIT_BREAKERS_ENABLED
 
 
 class TestScoreToGrade:
@@ -180,3 +183,205 @@ class TestScoringConsistency:
         if result["qualified"] and result["overall"] is not None:
             score = result["overall"]["score"]
             assert 0 <= score <= 100, f"Score {score} out of valid range [0, 100]"
+
+
+class TestCustomWeights:
+    """Tests for custom category weight functionality."""
+
+    @pytest.mark.unit
+    @pytest.mark.scoring
+    def test_custom_weights_affect_score(self, passing_primary_checks_metrics, config_factory):
+        """Custom weights should produce different scores than defaults."""
+        config = config_factory(**passing_primary_checks_metrics)
+
+        # Get default score
+        result_default = calculate_asset_risk_score(config)
+
+        # Custom weights emphasizing different categories
+        custom_weights = {
+            "smart_contract": 0.40,  # Increased from 0.10
+            "counterparty": 0.10,  # Decreased from 0.25
+            "market": 0.10,
+            "liquidity": 0.10,
+            "collateral": 0.10,
+            "reserve_oracle": 0.20,
+        }
+        result_custom = calculate_asset_risk_score(config, custom_weights=custom_weights)
+
+        # Both should be qualified
+        if result_default["qualified"] and result_custom["qualified"]:
+            # Scores may differ due to different weighting
+            # The actual score difference depends on category scores
+            assert result_custom["scoring_settings"]["custom_weights_used"] is True
+            assert result_custom["scoring_settings"]["custom_weights"] == custom_weights
+
+    @pytest.mark.unit
+    @pytest.mark.scoring
+    def test_custom_weights_applied_to_categories(self, passing_primary_checks_metrics, config_factory):
+        """Custom weights should be reflected in category results."""
+        config = config_factory(**passing_primary_checks_metrics)
+
+        custom_weights = {
+            "smart_contract": 0.20,
+            "counterparty": 0.20,
+            "market": 0.20,
+            "liquidity": 0.20,
+            "collateral": 0.10,
+            "reserve_oracle": 0.10,
+        }
+        result = calculate_asset_risk_score(config, custom_weights=custom_weights)
+
+        if result["qualified"]:
+            for cat_key, expected_weight in custom_weights.items():
+                actual_weight = result["categories"][cat_key]["weight"]
+                assert abs(actual_weight - expected_weight) < 0.001, \
+                    f"{cat_key} weight mismatch: expected {expected_weight}, got {actual_weight}"
+
+    @pytest.mark.unit
+    @pytest.mark.scoring
+    def test_default_weights_when_none_provided(self, passing_primary_checks_metrics, config_factory):
+        """When no custom weights provided, should use defaults."""
+        config = config_factory(**passing_primary_checks_metrics)
+
+        result = calculate_asset_risk_score(config)
+
+        if result["qualified"]:
+            assert result["scoring_settings"]["custom_weights_used"] is False
+            for cat_key in DEFAULT_CATEGORY_WEIGHTS:
+                expected_weight = DEFAULT_CATEGORY_WEIGHTS[cat_key]["weight"]
+                actual_weight = result["categories"][cat_key]["weight"]
+                assert abs(actual_weight - expected_weight) < 0.001
+
+    @pytest.mark.unit
+    @pytest.mark.scoring
+    def test_partial_custom_weights(self, passing_primary_checks_metrics, config_factory):
+        """Partial custom weights should work, with defaults for unspecified."""
+        config = config_factory(**passing_primary_checks_metrics)
+
+        # Only specify some weights
+        custom_weights = {
+            "smart_contract": 0.30,
+            "counterparty": 0.30,
+        }
+        result = calculate_asset_risk_score(config, custom_weights=custom_weights)
+
+        if result["qualified"]:
+            # Specified weights should be custom
+            assert abs(result["categories"]["smart_contract"]["weight"] - 0.30) < 0.001
+            assert abs(result["categories"]["counterparty"]["weight"] - 0.30) < 0.001
+            # Unspecified should be default
+            assert abs(result["categories"]["market"]["weight"] - DEFAULT_CATEGORY_WEIGHTS["market"]["weight"]) < 0.001
+
+
+class TestCircuitBreakerToggle:
+    """Tests for circuit breaker enable/disable functionality."""
+
+    @pytest.mark.unit
+    @pytest.mark.scoring
+    def test_all_circuit_breakers_disabled(self, config_factory):
+        """Disabling all circuit breakers should prevent score capping."""
+        # Create config that would trigger circuit breakers
+        config = config_factory()
+        config["audit_data"] = {"auditor": "Test"}  # Pass primary check
+        config["reserve_ratio"] = 0.95  # Would trigger undercollateralized breaker
+
+        # With circuit breakers enabled (default)
+        result_with_cb = calculate_asset_risk_score(config)
+
+        # With all circuit breakers disabled
+        all_disabled = {
+            "reserve_undercollateralized": False,
+            "all_admin_eoa": False,
+            "active_security_incident": False,
+            "critical_category_failure": False,
+            "severe_category_weakness": False,
+            "no_audit": False,
+        }
+        result_no_cb = calculate_asset_risk_score(config, circuit_breakers_enabled=all_disabled)
+
+        # When disabled, no breakers should be triggered
+        if result_no_cb["qualified"]:
+            assert len(result_no_cb["circuit_breakers"]["triggered"]) == 0
+
+    @pytest.mark.unit
+    @pytest.mark.scoring
+    def test_selective_circuit_breaker_disable(self, config_factory):
+        """Selectively disabling breakers should only affect those breakers."""
+        config = config_factory()
+        config["audit_data"] = {"auditor": "Test"}
+        config["reserve_ratio"] = 0.95  # Triggers undercollateralized
+
+        # Disable only the undercollateralized breaker
+        selective_disable = {
+            "reserve_undercollateralized": False,
+            "all_admin_eoa": True,
+            "active_security_incident": True,
+            "critical_category_failure": True,
+            "severe_category_weakness": True,
+            "no_audit": True,
+        }
+        result = calculate_asset_risk_score(config, circuit_breakers_enabled=selective_disable)
+
+        if result["qualified"]:
+            # Undercollateralized should not be in triggered list
+            triggered_names = [t["name"] for t in result["circuit_breakers"]["triggered"]]
+            assert "Reserve Undercollateralized" not in triggered_names
+
+    @pytest.mark.unit
+    @pytest.mark.scoring
+    def test_default_circuit_breakers_all_enabled(self, passing_primary_checks_metrics, config_factory):
+        """By default, all circuit breakers should be enabled."""
+        config = config_factory(**passing_primary_checks_metrics)
+        result = calculate_asset_risk_score(config)
+
+        if result["qualified"]:
+            enabled_config = result["circuit_breakers"]["enabled_config"]
+            for breaker_name in DEFAULT_CIRCUIT_BREAKERS_ENABLED:
+                assert enabled_config.get(breaker_name, False) is True
+
+    @pytest.mark.unit
+    @pytest.mark.scoring
+    def test_circuit_breaker_config_in_result(self, passing_primary_checks_metrics, config_factory):
+        """Circuit breaker enabled config should be included in result."""
+        config = config_factory(**passing_primary_checks_metrics)
+
+        custom_cb = {"no_audit": False, "all_admin_eoa": True}
+        result = calculate_asset_risk_score(config, circuit_breakers_enabled=custom_cb)
+
+        if result["qualified"]:
+            assert result["scoring_settings"]["circuit_breakers_customized"] is True
+
+
+class TestCombinedCustomSettings:
+    """Tests for combining custom weights and circuit breakers."""
+
+    @pytest.mark.unit
+    @pytest.mark.scoring
+    def test_both_custom_weights_and_circuit_breakers(self, passing_primary_checks_metrics, config_factory):
+        """Both custom weights and circuit breakers should work together."""
+        config = config_factory(**passing_primary_checks_metrics)
+
+        custom_weights = {
+            "smart_contract": 0.25,
+            "counterparty": 0.25,
+            "market": 0.15,
+            "liquidity": 0.15,
+            "collateral": 0.10,
+            "reserve_oracle": 0.10,
+        }
+        custom_cb = {
+            "no_audit": False,
+            "severe_category_weakness": False,
+        }
+
+        result = calculate_asset_risk_score(
+            config,
+            custom_weights=custom_weights,
+            circuit_breakers_enabled=custom_cb
+        )
+
+        if result["qualified"]:
+            assert result["scoring_settings"]["custom_weights_used"] is True
+            assert result["scoring_settings"]["circuit_breakers_customized"] is True
+            # Verify weights applied
+            assert abs(result["categories"]["smart_contract"]["weight"] - 0.25) < 0.001

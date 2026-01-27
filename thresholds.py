@@ -66,7 +66,8 @@ GRADE_SCALE = {
 # CATEGORY WEIGHTS
 # =============================================================================
 
-CATEGORY_WEIGHTS = {
+# Default category weights - can be overridden by user configuration
+DEFAULT_CATEGORY_WEIGHTS = {
     "smart_contract": {
         "weight": 0.10,
         "justification": "Weight depends on code complexity and maturity. For battle-tested "
@@ -107,6 +108,9 @@ CATEGORY_WEIGHTS = {
                         "stablecoin methodology emphasizing reserve assessment."
     },
 }
+
+# Backward compatibility alias
+CATEGORY_WEIGHTS = DEFAULT_CATEGORY_WEIGHTS
 
 # =============================================================================
 # SMART CONTRACT RISK THRESHOLDS
@@ -564,4 +568,14 @@ CIRCUIT_BREAKERS = {
         "justification": "DeFiSafety requires audit for 70%+ score. Unaudited code is "
                         "highest smart contract risk regardless of other factors."
     },
+}
+
+# Default circuit breaker enabled states - all enabled by default
+DEFAULT_CIRCUIT_BREAKERS_ENABLED = {
+    "reserve_undercollateralized": True,
+    "all_admin_eoa": True,
+    "active_security_incident": True,
+    "critical_category_failure": True,
+    "severe_category_weakness": True,
+    "no_audit": True,
 }

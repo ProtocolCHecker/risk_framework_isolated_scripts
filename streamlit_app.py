@@ -49,6 +49,7 @@ try:
     from thresholds import (
         GRADE_SCALE,
         CATEGORY_WEIGHTS,
+        DEFAULT_CATEGORY_WEIGHTS,
         SMART_CONTRACT_THRESHOLDS,
         COUNTERPARTY_THRESHOLDS,
         MARKET_THRESHOLDS,
@@ -56,6 +57,7 @@ try:
         COLLATERAL_THRESHOLDS,
         RESERVE_ORACLE_THRESHOLDS,
         CIRCUIT_BREAKERS,
+        DEFAULT_CIRCUIT_BREAKERS_ENABLED,
     )
     from primary_checks import run_primary_checks, CheckStatus, PRIMARY_CHECKS
     from asset_score import calculate_asset_risk_score, CUSTODY_MODELS
@@ -128,6 +130,11 @@ def init_session_state():
             "oracle": None,
         },
         "scoring_metrics": None,
+        # Custom scoring settings
+        "custom_weights": None,  # Dict of category -> weight (0.0-1.0)
+        "circuit_breakers_enabled": None,  # Dict of breaker -> bool
+        "use_custom_weights": False,  # Toggle for using custom weights
+        "use_custom_circuit_breakers": False,  # Toggle for customizing circuit breakers
     }
     for key, value in defaults.items():
         if key not in st.session_state:
@@ -1320,7 +1327,15 @@ def run_full_analysis(fetch_live_data: bool = False):
         scoring_metrics = build_scoring_metrics(config, fetched_data)
 
         progress.progress(90, text="Calculating risk score...")
-        risk_score = calculate_asset_risk_score(scoring_metrics)
+        # Get custom scoring settings from session state
+        custom_weights = st.session_state.get("custom_weights") if st.session_state.get("use_custom_weights") else None
+        circuit_breakers_enabled = st.session_state.get("circuit_breakers_enabled") if st.session_state.get("use_custom_circuit_breakers") else None
+
+        risk_score = calculate_asset_risk_score(
+            scoring_metrics,
+            custom_weights=custom_weights,
+            circuit_breakers_enabled=circuit_breakers_enabled
+        )
 
         # Save to session state
         st.session_state.fetched_data = fetched_data
@@ -3388,7 +3403,116 @@ def main():
                     st.markdown(f"**Score:** <span style='color:{color}'>{grade} ({score:.1f})</span>", unsafe_allow_html=True)
 
         st.divider()
-        st.caption("v1.0.0")
+
+        # Scoring Settings Expander
+        if IMPORTS_OK:
+            with st.expander("⚙️ Scoring Settings", expanded=False):
+                st.caption("Customize category weights and circuit breakers")
+
+                # Category Weights Section
+                st.markdown("**Category Weights**")
+                use_custom_weights = st.checkbox(
+                    "Use custom weights",
+                    value=st.session_state.get("use_custom_weights", False),
+                    key="use_custom_weights_checkbox",
+                    help="Override default category weights with custom values"
+                )
+                st.session_state.use_custom_weights = use_custom_weights
+
+                if use_custom_weights:
+                    # Get current weights (custom or default)
+                    current_weights = st.session_state.get("custom_weights") or {}
+
+                    # Category display names and keys
+                    weight_categories = [
+                        ("smart_contract", "Smart Contract", 10),
+                        ("counterparty", "Counterparty", 25),
+                        ("market", "Market", 15),
+                        ("liquidity", "Liquidity", 15),
+                        ("collateral", "Collateral", 10),
+                        ("reserve_oracle", "Reserve & Oracle", 25),
+                    ]
+
+                    new_weights = {}
+                    for cat_key, cat_name, default_pct in weight_categories:
+                        default_val = int(current_weights.get(cat_key, DEFAULT_CATEGORY_WEIGHTS[cat_key]["weight"]) * 100)
+                        new_weights[cat_key] = st.slider(
+                            cat_name,
+                            min_value=0,
+                            max_value=50,
+                            value=default_val,
+                            step=5,
+                            key=f"weight_{cat_key}",
+                            help=f"Default: {default_pct}%"
+                        ) / 100.0
+
+                    # Calculate and display total
+                    total_weight = sum(new_weights.values())
+                    if abs(total_weight - 1.0) < 0.001:
+                        st.success(f"Total: {total_weight*100:.0f}%")
+                    else:
+                        st.warning(f"Total: {total_weight*100:.0f}% (should be 100%)")
+
+                    st.session_state.custom_weights = new_weights
+
+                    # Reset button for weights
+                    if st.button("Reset to Defaults", key="reset_weights"):
+                        for cat_key, _, _ in weight_categories:
+                            st.session_state[f"weight_{cat_key}"] = int(DEFAULT_CATEGORY_WEIGHTS[cat_key]["weight"] * 100)
+                        st.session_state.custom_weights = None
+                        st.rerun()
+                else:
+                    st.session_state.custom_weights = None
+                    st.caption("Using default weights")
+
+                st.markdown("---")
+
+                # Circuit Breakers Section
+                st.markdown("**Circuit Breakers**")
+                use_custom_cb = st.checkbox(
+                    "Customize circuit breakers",
+                    value=st.session_state.get("use_custom_circuit_breakers", False),
+                    key="use_custom_cb_checkbox",
+                    help="Enable/disable individual circuit breakers"
+                )
+                st.session_state.use_custom_circuit_breakers = use_custom_cb
+
+                if use_custom_cb:
+                    current_cb = st.session_state.get("circuit_breakers_enabled") or DEFAULT_CIRCUIT_BREAKERS_ENABLED.copy()
+
+                    # Circuit breaker display names
+                    cb_options = [
+                        ("reserve_undercollateralized", "Reserve < 100%", "Caps score at C grade"),
+                        ("all_admin_eoa", "Admin EOA", "Caps score at D grade"),
+                        ("active_security_incident", "Active Incident", "Caps score at F grade"),
+                        ("critical_category_failure", "Critical Failure (<25)", "Applies 0.5x multiplier"),
+                        ("severe_category_weakness", "Severe Weakness (<40)", "Applies 0.7x multiplier"),
+                        ("no_audit", "No Audit", "Caps score at D grade"),
+                    ]
+
+                    new_cb = {}
+                    for cb_key, cb_name, cb_desc in cb_options:
+                        new_cb[cb_key] = st.checkbox(
+                            cb_name,
+                            value=current_cb.get(cb_key, True),
+                            key=f"cb_{cb_key}",
+                            help=cb_desc
+                        )
+
+                    st.session_state.circuit_breakers_enabled = new_cb
+
+                    # Reset button for circuit breakers
+                    if st.button("Reset to Defaults", key="reset_cb"):
+                        for cb_key, _, _ in cb_options:
+                            st.session_state[f"cb_{cb_key}"] = True
+                        st.session_state.circuit_breakers_enabled = None
+                        st.rerun()
+                else:
+                    st.session_state.circuit_breakers_enabled = None
+                    st.caption("All circuit breakers enabled")
+
+        st.divider()
+        st.caption("v1.1.0")
 
     # Tabs
     tabs = st.tabs([
