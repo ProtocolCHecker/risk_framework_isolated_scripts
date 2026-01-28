@@ -1847,14 +1847,32 @@ def render_tab_methodology_scoring():
 
         **Data Source:** `aave_check.py`, `compound_check.py`
         - On-chain query: utilization = (borrowed / supplied) * 100
+
+        **Asymmetric Scoring Formula:**
+
+        The score is calculated relative to the optimal utilization rate (default 80%, from Aave's interest rate curve kink):
+
+        - **Under optimal (U ≤ Uopt):** Linear increase from 50 to 100
+          ```
+          score = 50 + 50 × (U / Uopt)
+          ```
+        - **Over optimal (U > Uopt):** Power decay from 100 to 0
+          ```
+          score = 100 × ((100 - U) / (100 - Uopt))^1.5
+          ```
+
+        **Rationale:** Both under-utilization (inefficient capital) and over-utilization (liquidity risk) are penalized,
+        but over-utilization is penalized more aggressively as it directly impacts withdrawal liquidity.
         """)
 
         st.dataframe(pd.DataFrame([
-            {"Utilization %": "< 50%", "Score": 100, "Justification": "Healthy buffer"},
-            {"Utilization %": "50-70%", "Score": 85, "Justification": "Aave optimal range"},
-            {"Utilization %": "70-85%", "Score": 65, "Justification": "Approaching rate curve kink"},
-            {"Utilization %": "85-95%", "Score": 40, "Justification": "Withdrawal constrained"},
-            {"Utilization %": "> 95%", "Score": 15, "Justification": "Suppliers may not withdraw"},
+            {"Utilization %": "0%", "Score": 50, "Justification": "Under-utilized - capital efficiency penalty"},
+            {"Utilization %": "40%", "Score": 75, "Justification": "Half of optimal - moderate efficiency"},
+            {"Utilization %": "80% (optimal)", "Score": 100, "Justification": "Optimal utilization - perfect balance"},
+            {"Utilization %": "85%", "Score": 56, "Justification": "Above optimal - liquidity tightening"},
+            {"Utilization %": "90%", "Score": 35, "Justification": "High utilization - liquidity risk elevated"},
+            {"Utilization %": "95%", "Score": 18, "Justification": "Critical - withdrawal liquidity constrained"},
+            {"Utilization %": "100%", "Score": 0, "Justification": "Full utilization - no withdrawal possible"},
         ]), use_container_width=True, hide_index=True)
 
     # --------------------------------------------------------------------------
