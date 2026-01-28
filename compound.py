@@ -197,9 +197,20 @@ def analyze_compound_market(collateral_address, chain_name, chain_config):
             total_supply = totals[4] / (10 ** base_decimals)
             total_borrow = totals[5] / (10 ** base_decimals)
 
-            utilization = comet.functions.getUtilization().call() / 1e18 * 100
-            supply_rate = comet.functions.getSupplyRate(int(utilization * 1e16)).call() / 1e18 * 100
-            borrow_rate = comet.functions.getBorrowRate(int(utilization * 1e16)).call() / 1e18 * 100
+            # Get utilization (raw value for rate queries, percentage for display)
+            utilization_raw = comet.functions.getUtilization().call()
+            utilization = utilization_raw / 1e18 * 100
+
+            # Get per-second rates and convert to APY
+            # Compound V3 returns rates as per-second, scaled by 1e18
+            SECONDS_PER_YEAR = 365 * 24 * 60 * 60  # 31,536,000
+
+            supply_rate_per_sec = comet.functions.getSupplyRate(utilization_raw).call() / 1e18
+            borrow_rate_per_sec = comet.functions.getBorrowRate(utilization_raw).call() / 1e18
+
+            # Convert to APY (linear approximation)
+            supply_rate = supply_rate_per_sec * SECONDS_PER_YEAR * 100
+            borrow_rate = borrow_rate_per_sec * SECONDS_PER_YEAR * 100
 
             # Collateral factors
             borrow_cf = asset_info[4] / 1e18 * 100  # borrowCollateralFactor = LTV
