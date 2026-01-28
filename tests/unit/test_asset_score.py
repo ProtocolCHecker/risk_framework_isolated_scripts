@@ -18,6 +18,7 @@ from asset_score import (
     calculate_asset_risk_score,
     calculate_category_scores,
     apply_circuit_breakers,
+    calculate_utilization_score,
     CUSTODY_MODELS,
 )
 from thresholds import DEFAULT_CATEGORY_WEIGHTS, DEFAULT_CIRCUIT_BREAKERS_ENABLED
@@ -385,3 +386,92 @@ class TestCombinedCustomSettings:
             assert result["scoring_settings"]["circuit_breakers_customized"] is True
             # Verify weights applied
             assert abs(result["categories"]["smart_contract"]["weight"] - 0.25) < 0.001
+
+
+class TestUtilizationScoring:
+    """Tests for the calculate_utilization_score function."""
+
+    @pytest.mark.unit
+    @pytest.mark.scoring
+    def test_zero_utilization_gives_base_score(self):
+        """0% utilization should give base score of 50."""
+        score, _ = calculate_utilization_score(0.0, optimal_utilization=80.0)
+        assert abs(score - 50.0) < 0.01
+
+    @pytest.mark.unit
+    @pytest.mark.scoring
+    def test_optimal_utilization_gives_perfect_score(self):
+        """Utilization at optimal should give score of 100."""
+        score, _ = calculate_utilization_score(80.0, optimal_utilization=80.0)
+        assert abs(score - 100.0) < 0.01
+
+    @pytest.mark.unit
+    @pytest.mark.scoring
+    def test_full_utilization_gives_zero_score(self):
+        """100% utilization should give score of 0."""
+        score, _ = calculate_utilization_score(100.0, optimal_utilization=80.0)
+        assert abs(score - 0.0) < 0.01
+
+    @pytest.mark.unit
+    @pytest.mark.scoring
+    @pytest.mark.parametrize("util,expected_min,expected_max", [
+        (40.0, 70.0, 80.0),   # Half of optimal -> ~75
+        (60.0, 85.0, 95.0),   # 75% of optimal -> ~87.5
+        (70.0, 90.0, 98.0),   # 87.5% of optimal -> ~93.75
+    ])
+    def test_under_optimal_linear_increase(self, util, expected_min, expected_max):
+        """Under optimal: score increases linearly from 50 to 100."""
+        score, _ = calculate_utilization_score(util, optimal_utilization=80.0)
+        assert expected_min <= score <= expected_max, f"Util {util}% gave score {score}"
+
+    @pytest.mark.unit
+    @pytest.mark.scoring
+    @pytest.mark.parametrize("util,expected_min,expected_max", [
+        (85.0, 50.0, 70.0),   # Slightly over optimal
+        (90.0, 30.0, 45.0),   # Moderately over optimal
+        (95.0, 10.0, 25.0),   # Highly over optimal
+    ])
+    def test_over_optimal_power_decay(self, util, expected_min, expected_max):
+        """Over optimal: score decays with power function."""
+        score, _ = calculate_utilization_score(util, optimal_utilization=80.0)
+        assert expected_min <= score <= expected_max, f"Util {util}% gave score {score}"
+
+    @pytest.mark.unit
+    @pytest.mark.scoring
+    def test_asymmetric_behavior(self):
+        """Score should be asymmetric around optimal utilization."""
+        # 10% below optimal vs 10% above optimal should have different scores
+        score_below, _ = calculate_utilization_score(70.0, optimal_utilization=80.0)  # 10% below
+        score_above, _ = calculate_utilization_score(90.0, optimal_utilization=80.0)  # 10% above
+
+        # Below optimal should be higher than above optimal (over-utilization is riskier)
+        assert score_below > score_above
+
+    @pytest.mark.unit
+    @pytest.mark.scoring
+    def test_score_clamped_to_valid_range(self):
+        """Score should always be between 0 and 100."""
+        test_values = [-10.0, 0.0, 50.0, 80.0, 100.0, 150.0]
+        for util in test_values:
+            score, _ = calculate_utilization_score(util)
+            assert 0.0 <= score <= 100.0, f"Util {util}% gave out-of-range score {score}"
+
+    @pytest.mark.unit
+    @pytest.mark.scoring
+    def test_justification_returned(self):
+        """Function should return justification text."""
+        _, justification = calculate_utilization_score(50.0)
+        assert isinstance(justification, str)
+        assert len(justification) > 0
+
+    @pytest.mark.unit
+    @pytest.mark.scoring
+    def test_custom_optimal_utilization(self):
+        """Function should respect custom optimal utilization parameter."""
+        # With optimal at 90%, 80% should be under-utilized
+        score_90opt, _ = calculate_utilization_score(80.0, optimal_utilization=90.0)
+        # With optimal at 70%, 80% should be over-utilized
+        score_70opt, _ = calculate_utilization_score(80.0, optimal_utilization=70.0)
+
+        # Under-utilized should score higher than over-utilized
+        assert score_90opt > score_70opt

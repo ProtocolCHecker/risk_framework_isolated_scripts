@@ -462,14 +462,16 @@ COLLATERAL_THRESHOLDS = {
     },
     "utilization_rate": {
         "weight": 0.25,
-        "description": "Lending pool utilization (borrowed / supplied)",
-        "thresholds": [
-            {"util_pct": 50, "score": 100, "justification": "< 50% utilization is healthy buffer."},
-            {"util_pct": 70, "score": 85, "justification": "50-70% is optimal range per Aave interest rate model."},
-            {"util_pct": 85, "score": 65, "justification": "70-85% is elevated. Approaching kink in rate curve."},
-            {"util_pct": 95, "score": 40, "justification": "85-95% is high. Withdrawal liquidity constrained."},
-            {"util_pct": 100, "score": 15, "justification": "> 95% is critical. Suppliers may not be able to withdraw."},
-        ],
+        "description": "Lending pool utilization (borrowed / supplied) - scored relative to optimal utilization",
+        "default_optimal": 80.0,
+        "scoring_formula": """
+            Asymmetric scoring based on optimal utilization (Uopt):
+            - If U <= Uopt: score = 50 + 50 * (U / Uopt)        [Linear: 50→100]
+            - If U > Uopt:  score = 100 * ((100-U)/(100-Uopt))^1.5  [Power decay: 100→0]
+
+            Example (Uopt=80%): 0%→50, 40%→75, 80%→100, 90%→35, 95%→13, 100%→0
+        """,
+        "justification": "Penalizes both under-utilization (inefficient capital) and over-utilization (liquidity risk). Over-utilization penalized more harshly due to withdrawal constraints.",
     },
 }
 

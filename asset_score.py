@@ -136,6 +136,47 @@ def interpolate_score(value: float, thresholds: list, value_key: str, ascending:
     return (50, "Unable to interpolate - using default")
 
 
+def calculate_utilization_score(
+    utilization_pct: float,
+    optimal_utilization: float = 80.0
+) -> Tuple[float, str]:
+    """
+    Calculate utilization score using asymmetric formula based on optimal utilization.
+
+    - Under optimal: Linear scoring from 50 (at 0%) to 100 (at optimal)
+    - Over optimal: Power decay (exponent 1.5) from 100 to 0
+
+    Args:
+        utilization_pct: Current utilization percentage (0-100)
+        optimal_utilization: Optimal utilization percentage (default 80%)
+
+    Returns:
+        Tuple of (score, justification)
+    """
+    # Clamp utilization to valid range
+    util = max(0.0, min(100.0, utilization_pct))
+    opt = max(1.0, min(99.0, optimal_utilization))  # Avoid division by zero
+
+    if util <= opt:
+        # Under-utilized: Linear from 50 to 100
+        score = 50 + 50 * (util / opt)
+        if util < opt * 0.5:
+            justification = f"Under-utilized ({util:.1f}% < {opt:.0f}% optimal). Capital efficiency penalty."
+        else:
+            justification = f"Approaching optimal ({util:.1f}% → {opt:.0f}%). Good utilization."
+    else:
+        # Over-utilized: Power decay (exponent 1.5)
+        score = 100 * ((100 - util) / (100 - opt)) ** 1.5
+        if util > 95:
+            justification = f"Critical utilization ({util:.1f}%). Withdrawal liquidity severely constrained."
+        elif util > 90:
+            justification = f"High utilization ({util:.1f}% > {opt:.0f}% optimal). Liquidity risk elevated."
+        else:
+            justification = f"Above optimal ({util:.1f}% > {opt:.0f}%). Liquidity tightening."
+
+    return (max(0.0, min(100.0, score)), justification)
+
+
 # =============================================================================
 # CATEGORY SCORING FUNCTIONS
 # =============================================================================
@@ -655,6 +696,7 @@ def calculate_collateral_score(
     clr_pct: float,
     rlr_pct: float,
     utilization_pct: float,
+    optimal_utilization: float = 80.0,
     weight_override: float = None
 ) -> Dict[str, Any]:
     """
@@ -664,6 +706,7 @@ def calculate_collateral_score(
         clr_pct: Cascade Liquidation Risk percentage
         rlr_pct: Recursive Lending Ratio percentage
         utilization_pct: Pool utilization percentage
+        optimal_utilization: Optimal utilization from Aave interest rate model (default 80%)
         weight_override: Optional custom weight (0.0-1.0) to override default
     """
     breakdown = {}
@@ -690,9 +733,8 @@ def calculate_collateral_score(
         "value": rlr_pct,
     }
 
-    # 3. Utilization (25%)
-    util_thresholds = COLLATERAL_THRESHOLDS["utilization_rate"]["thresholds"]
-    util_score, util_just = interpolate_score(utilization_pct, util_thresholds, "util_pct")
+    # 3. Utilization (25%) - Asymmetric scoring based on optimal utilization
+    util_score, util_just = calculate_utilization_score(utilization_pct, optimal_utilization)
 
     breakdown["utilization"] = {
         "score": round(util_score, 1),
