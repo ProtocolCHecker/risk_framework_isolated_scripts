@@ -1,0 +1,238 @@
+{
+  "asset_name": "Lido Wrapped Staked ETH",
+  "asset_symbol": "wstETH",
+  "asset_type": "liquid_staking",
+  "underlying": "ETH",
+  "token_decimals": 18,
+
+  "token_addresses": [
+    {"chain": "ethereum", "address": "0x7f39C581F595B53c5cb19bD0b3f8dA6c935E2Ca0"},
+    {"chain": "arbitrum", "address": "0x5979D7b546E38E414F7E9822514be443A4800529"},
+    {"chain": "optimism", "address": "0x1F32b1c2345538c0c6f582fCB022739c4A194Ebb"},
+    {"chain": "base", "address": "0xc1CBa3fCea344f92D9239c08C0568f6F2F0ee452"},
+    {"chain": "polygon", "address": "0x03b54A6e9a984069379fae1a4fC4dBAE93B3bCCD"}
+  ],
+
+  "lending_configs": [
+    {
+      "protocol": "aave",
+      "chain": "ethereum",
+      "token_address": "0x7f39C581F595B53c5cb19bD0b3f8dA6c935E2Ca0",
+      "pool": "0x87870Bca3F3fD6335C3F4ce8392D69350B4fA4E2",
+      "data_provider": "0x7B4EB56E7CD4b454BA8ff71E4518426369a138a3"
+    },
+    {
+      "protocol": "aave",
+      "chain": "arbitrum",
+      "token_address": "0x5979D7b546E38E414F7E9822514be443A4800529",
+      "pool": "0x794a61358D6845594F94dc1DB02A252b5b4814aD",
+      "data_provider": "0x69FA688f1Dc47d4B5d8029D5a35FB7a548310654"
+    },
+    {
+      "protocol": "aave",
+      "chain": "base",
+      "token_address": "0xc1CBa3fCea344f92D9239c08C0568f6F2F0ee452",
+      "pool": "0xA238Dd80C259a72e81d7e4664a9801593F98d1c5",
+      "data_provider": "0x0F43731EB8d45A581f4a36DD74F5f358bc90C73A"
+    },
+    {
+      "protocol": "compound",
+      "chain": "ethereum",
+      "token_address": "0x7f39C581F595B53c5cb19bD0b3f8dA6c935E2Ca0",
+      "comet_address": "0xA17581A9E3356d9A858b789D68B4d866e593aE94",
+      "market_name": "WETH",
+      "subgraph_id": "AwoxEZbiWLvv6e3QdvdMZw4WDURdGbvPfHmZRc8Dpfz9"
+    },
+    {
+      "protocol": "compound",
+      "chain": "ethereum",
+      "token_address": "0x7f39C581F595B53c5cb19bD0b3f8dA6c935E2Ca0",
+      "comet_address": "0xc3d688B66703497DAA19211EEdff47f25384cdc3",
+      "market_name": "USDC",
+      "subgraph_id": "AwoxEZbiWLvv6e3QdvdMZw4WDURdGbvPfHmZRc8Dpfz9"
+    },
+    {
+      "protocol": "compound",
+      "chain": "ethereum",
+      "token_address": "0x7f39C581F595B53c5cb19bD0b3f8dA6c935E2Ca0",
+      "comet_address": "0x3Afdc9BCA9213A35503b077a6072F3D0d5AB0840",
+      "market_name": "USDT",
+      "subgraph_id": "AwoxEZbiWLvv6e3QdvdMZw4WDURdGbvPfHmZRc8Dpfz9"
+    }
+  ],
+
+  "dex_pools": [
+    {
+      "protocol": "uniswap",
+      "chain": "ethereum",
+      "pool_address": "0x109830a1aaad605bbf02a9dfa7b0b92ec2fb7daa",
+      "pool_name": "wstETH/WETH 0.01%",
+      "subgraph_id": "5zvR82QoaXYFyDEKLZ9t6v9adgnptxYpKpSbxtgVENFV"
+    },
+    {
+      "protocol": "uniswap",
+      "chain": "arbitrum",
+      "pool_address": "0x35218a1cbac5bbc3e57fd9bd38219d37571b3537",
+      "pool_name": "wstETH/WETH 0.01%",
+      "subgraph_id": "FQ6JYszEKApsBpAmiHesRsd9Ygc6mzmpNRANeVQFYoVX"
+    },
+    {
+      "protocol": "curve",
+      "chain": "ethereum",
+      "pool_address": "0xDC24316b9AE028F1497c275EB9192a3Ea0f67022",
+      "pool_name": "stETH/ETH",
+      "lp_token": "0x06325440D014e39736583c165C2963BA99fAf14E",
+      "gauge_address": "0x182B723a58739a9c974cFDB385ceaDb237453c28",
+      "n_coins": 2
+    },
+    {
+      "protocol": "pancakeswap",
+      "chain": "base",
+      "pool_address": "0xBd59a718E60bd868123C6E949c9fd97185EFbDB7",
+      "pool_name": "wstETH/WETH"
+    }
+  ],
+
+  "proof_of_reserve": {
+    "verification_type": "liquid_staking",
+    "protocol": "lido",
+    "chain": "ethereum",
+    "contracts": {
+      "steth": "0xae7ab96520DE3A18E5e111B5EaAb095312D7fE84",
+      "wsteth": "0x7f39C581F595B53c5cb19bD0b3f8dA6c935E2Ca0"
+    },
+    "description": "wstETH is backed by staked ETH in Ethereum validators. Verified via getTotalPooledEther() == totalSupply() on stETH contract."
+  },
+
+  "price_risk": {
+    "token_coingecko_id": "staked-ether",
+    "underlying_coingecko_id": "ethereum"
+  },
+
+  "oracle_lag": {
+    "price_feed_1": {"chain": "ethereum", "address": "0x86392dC19c0b719886221c78AB11eb8Cf5c52812", "name": "stETH/ETH"},
+    "price_feed_2": {"chain": "ethereum", "address": "0x8B6851156023f4f5A66F68BEA80851c3D905Ac93", "name": "wstETH/USD"}
+  },
+
+  "oracle_freshness": {
+    "price_feeds": [
+      {"chain": "ethereum", "address": "0x8B6851156023f4f5A66F68BEA80851c3D905Ac93", "name": "wstETH/USD"},
+      {"chain": "ethereum", "address": "0xCfE54B5cD566aB89272946F602D76Ea879CAb4a8", "name": "stETH/USD"},
+      {"chain": "ethereum", "address": "0x86392dC19c0b719886221c78AB11eb8Cf5c52812", "name": "stETH/ETH"},
+      {"chain": "ethereum", "address": "0x5f4eC3Df9cbd43714FE2740f5E3616155c5b8419", "name": "ETH/USD"}
+    ]
+  },
+
+  "audit_data": {
+    "total_audits": {
+      "lido_on_ethereum": 89,
+      "lido_multichain": 18,
+      "lido_on_polygon": 2
+    },
+    "auditors": [
+      "Quantstamp", "Sigma Prime", "MixBytes", "ChainSecurity", "Statemind",
+      "Certora", "Hexens", "Oxorio", "OpenZeppelin", "Consensys Diligence",
+      "Ackee Blockchain", "Pessimistic", "Cantina", "Zellic", "Verilog",
+      "Nethermind", "Composable Security", "Code4rena", "Runtime Verification"
+    ],
+    "wsteth_specific_audits": [
+      {
+        "auditor": "MixBytes",
+        "date": "2021-09",
+        "title": "wstETH Security Audit",
+        "issues": {"critical": 0, "high": 0, "medium": 0, "low": 0, "warning": 5},
+        "resolved": "3 Acknowledged, 2 No Issue"
+      },
+      {
+        "auditor": "MixBytes",
+        "date": "2025-09",
+        "title": "WstETH Staker Security Audit",
+        "issues": {"critical": 0, "high": 0, "medium": 0, "low": 0},
+        "all_issues_resolved": true
+      }
+    ],
+    "latest_protocol_audit": {
+      "auditor": "Certora",
+      "date": "2025-12",
+      "title": "Lido V3 Security Audit",
+      "issues": {"critical": 7, "high": 14, "medium": 29, "low": 21, "info": 13},
+      "unresolved": {"critical": 0, "high": 0},
+      "resolved": "70 Fixed, 14 Acknowledged"
+    },
+    "l2_bridge_audits_count": 18,
+    "formal_verifications": ["Runtime Verification (Dual Governance)", "Certora (Lido V3)"]
+  },
+
+  "deployment_date": "2021-02-19",
+
+  "incidents": [
+    {
+      "date": "2021-10-05",
+      "severity": "low",
+      "description": "Node operator vulnerability reported via Immunefi bug bounty. Could only be exploited by whitelisted node operators. $100k bounty paid. No user funds were lost.",
+      "resolved": true
+    }
+  ],
+
+  "multisig_configs": [
+    {
+      "role_name": "aragon_voting",
+      "is_multisig": false,
+      "is_dao_voting": true,
+      "address": "0x2e59A20f205bB85a89C53f1936454680651E618e",
+      "threshold": "5% quorum + simple majority",
+      "owners_count": null,
+      "dao_safeguards": {
+        "has_veto_power": true,
+        "has_dual_governance": true,
+        "quorum_pct": 5
+      }
+    },
+    {
+      "role_name": "aragon_agent",
+      "is_multisig": false,
+      "is_treasury": true,
+      "address": "0x3e40D73EB977Dc6a537aF587D48316feE66E9C8c",
+      "threshold": null,
+      "owners_count": null
+    },
+    {
+      "role_name": "emergency_brakes",
+      "is_multisig": true,
+      "is_eoa": false,
+      "address": "0x73b047fe6337183A454c5217241D780a932777bD",
+      "threshold": 3,
+      "owners_count": 5
+    }
+  ],
+
+  "has_timelock": true,
+  "timelock_hours": 72,
+  "timelock_details": "Dual Governance (LIP-28): minimum 3-day delay, can extend up to 45 days based on stETH holder opposition (1-10% TVL in escrow)",
+
+  "custody_model": "decentralized",
+  "custodian": null,
+  "has_insurance": false,
+  "insurance_provider": null,
+  "has_blacklist": false,
+  "blacklist_control": null,
+
+  "critical_roles": ["aragon_voting", "emergency_brakes"],
+  "role_weights": {"aragon_voting": 5, "aragon_agent": 4, "emergency_brakes": 3},
+
+  "rpc_urls": {
+    "ethereum": "https://lb.drpc.live/ethereum/AtiZvaKOcUmKq-AbTta3bRagNNpNbjkR8LQsEklbR4ac",
+    "arbitrum": "https://lb.drpc.live/arbitrum/AtiZvaKOcUmKq-AbTta3bRagNNpNbjkR8LQsEklbR4ac",
+    "optimism": "https://lb.drpc.live/optimism/AtiZvaKOcUmKq-AbTta3bRagNNpNbjkR8LQsEklbR4ac",
+    "base": "https://lb.drpc.live/base/AtiZvaKOcUmKq-AbTta3bRagNNpNbjkR8LQsEklbR4ac",
+    "polygon": "https://lb.drpc.live/polygon/AtiZvaKOcUmKq-AbTta3bRagNNpNbjkR8LQsEklbR4ac"
+  },
+
+  "blockscout_apis": {
+    "ethereum": "https://eth.blockscout.com/api/v2",
+    "arbitrum": "https://arbitrum.blockscout.com/api/v2",
+    "optimism": "https://optimism.blockscout.com/api/v2",
+    "base": "https://base.blockscout.com/api/v2",
+    "polygon": "https://polygon.blockscout.com/api/v2"
+  }
+}

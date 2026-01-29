@@ -1,0 +1,253 @@
+{
+  "asset_name": "Cap USD",
+  "asset_symbol": "cUSD",
+  "asset_type": "stablecoin",
+  "underlying": "USD",
+  "token_decimals": 18,
+
+  "token_addresses": [
+    {"chain": "ethereum", "address": "0xcCcc62962d17b8914c62D74FfB843d73B2a3cccC"}
+  ],
+
+  "lending_configs": [],
+
+  "dex_pools": [
+    {
+      "protocol": "curve",
+      "chain": "ethereum",
+      "pool_address": "0x2D1eB1704D0EE227B7528C5BDB4Fd256d6aC5B09",
+      "pool_name": "cUSD-crvUSD (Curve Cap)",
+      "lp_token": "0x2D1eB1704D0EE227B7528C5BDB4Fd256d6aC5B09",
+      "gauge_address": "0xafd796E7c579EE49851DBa31Ad9EEc4aBDc0F31A",
+      "n_coins": 2
+    }
+  ],
+
+  "proof_of_reserve": {
+    "verification_type": "fractional_reserve",
+    "vault_address": "0xcCcc62962d17b8914c62D74FfB843d73B2a3cccC",
+    "chain": "ethereum",
+    "token_coingecko_id": "cap-usd",
+    "backing_assets": [
+      {
+        "symbol": "USDC",
+        "address": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+        "decimals": 6,
+        "max_allocation_pct": 40
+      },
+      {
+        "symbol": "USDT",
+        "address": "0xdAC17F958D2ee523a2206206994597C13D831ec7",
+        "decimals": 6,
+        "max_allocation_pct": 40
+      },
+      {
+        "symbol": "pyUSD",
+        "address": "0x6c3ea9036406852006290770BEdFcAbA0e23A0e8",
+        "decimals": 6,
+        "max_allocation_pct": 40
+      }
+    ],
+    "price_oracle": {
+      "address": "0x9A5a3c3Ed0361505cC1D4e824B3854De5724434A",
+      "decimals": 8,
+      "type": "redstone",
+      "max_staleness_seconds": 3600
+    },
+    "risk_thresholds": {
+      "min_backing_ratio_pct": 100,
+      "max_utilization_pct": 80,
+      "max_single_asset_pct": 50
+    },
+    "description": "cUSD is backed by a fractional reserve of blue chip stablecoins. Idle reserves generate yield via lending markets."
+  },
+
+  "price_risk": {
+    "token_coingecko_id": "cap-usd",
+    "underlying_coingecko_id": "usd-coin"
+  },
+
+  "oracle_lag": {
+    "price_feed_1": {"chain": "ethereum", "name": "Redstone cUSD_FUNDAMENTAL", "address": "0x9A5a3c3Ed0361505cC1D4e824B3854De5724434A"}
+  },
+
+  "oracle_freshness": {
+    "price_feeds": [
+      {"chain": "ethereum", "name": "Redstone cUSD_FUNDAMENTAL", "address": "0x9A5a3c3Ed0361505cC1D4e824B3854De5724434A"}
+    ]
+  },
+
+  "audit_data": {
+    "total_audits": {
+      "core_contracts": 8,
+      "extensions": 0
+    },
+    "formal_verifications": ["Certora (EigenLayer AVS)", "Recon (Invariant Testing)"],
+    "auditors": [
+      "Trail of Bits",
+      "Spearbit",
+      "Zellic",
+      "Sherlock",
+      "Certora",
+      "Electisec",
+      "Recon"
+    ],
+    "key_audits": [
+      {
+        "auditor": "Trail of Bits",
+        "date": "2025-03",
+        "title": "Cap Protocol",
+        "scope": "Core protocol audit",
+        "report_url": "https://github.com/cap-labs-dev/cap-audits/blob/main/2025-05-15-TrailOfBits.pdf",
+        "issues": {"critical": 0, "high": 0, "medium": 0, "low": 0},
+        "unresolved": {"critical": 0, "high": 0},
+        "notes": "Issue counts pending - verify from PDF report"
+      },
+      {
+        "auditor": "Spearbit",
+        "date": "2025-04",
+        "title": "Cap Protocol",
+        "scope": "Lead Security Researchers review",
+        "report_url": "https://github.com/cap-labs-dev/cap-audits/blob/main/2025-06-23-Spearbit.pdf",
+        "issues": {"critical": 0, "high": 0, "medium": 0, "low": 0},
+        "unresolved": {"critical": 0, "high": 0},
+        "notes": "Issue counts pending - verify from PDF report"
+      },
+      {
+        "auditor": "Zellic",
+        "date": "2025-02",
+        "title": "Cap Protocol",
+        "scope": "Core protocol audit",
+        "report_url": "https://github.com/cap-labs-dev/cap-audits/blob/main/2025-03-17-Zellic.pdf",
+        "issues": {"critical": 0, "high": 0, "medium": 0, "low": 0},
+        "unresolved": {"critical": 0, "high": 0},
+        "notes": "Issue counts pending - verify from PDF report"
+      },
+      {
+        "auditor": "Sherlock",
+        "date": "2025-07",
+        "title": "Cap Protocol",
+        "scope": "Bug bounty contest ($126,000 USDC pool)",
+        "report_url": "https://github.com/cap-labs-dev/cap-audits/blob/main/2025-09-03-Sherlock.pdf",
+        "contest_url": "https://audits.sherlock.xyz/contests/990",
+        "judging_repo": "https://github.com/sherlock-audit/2025-07-cap-judging",
+        "issues": {"critical": 0, "high": 5, "medium": 8, "low": 0},
+        "unresolved": {"critical": 0, "high": 0},
+        "high_findings": [
+          "realizeRestakerInterest() mints unbacked debt leading to protocol insolvency",
+          "MEV bot will siphon rewards from long-term delegators",
+          "Uncapped maxLiquidatable enables over-repayment and vault under-collateralization",
+          "Undetected insolvency from external losses in fractional reserve system",
+          "Misconfigured UUPS upgrade authorization permanently disables contract upgradability"
+        ],
+        "notes": "All issues addressed before mainnet launch"
+      },
+      {
+        "auditor": "Certora",
+        "date": "2025-09",
+        "title": "EigenLayer SSN",
+        "scope": "EigenLayer AVS integration + formal verification",
+        "report_url": "https://github.com/cap-labs-dev/cap-audits/blob/main/2025-09-15-Certora%20(EigenAVS).pdf",
+        "issues": {"critical": 0, "high": 0, "medium": 0, "low": 0},
+        "unresolved": {"critical": 0, "high": 0},
+        "notes": "Issue counts pending - verify from PDF report"
+      },
+      {
+        "auditor": "Electisec",
+        "date": "2025-05",
+        "title": "LZ Vault",
+        "scope": "LayerZero vault integration",
+        "report_url": "https://github.com/cap-labs-dev/cap-audits/blob/main/2025-05-25-Electisec.pdf",
+        "issues": {"critical": 0, "high": 0, "medium": 0, "low": 0},
+        "unresolved": {"critical": 0, "high": 0},
+        "notes": "Issue counts pending - verify from PDF report"
+      },
+      {
+        "auditor": "Recon",
+        "date": "2025-05",
+        "title": "Invariant Testing",
+        "scope": "Invariant testing suite",
+        "report_url": "https://github.com/cap-labs-dev/cap-audits/blob/main/2025-07-04-Recon.pdf",
+        "issues": {"critical": 0, "high": 0, "medium": 0, "low": 0},
+        "unresolved": {"critical": 0, "high": 0},
+        "notes": "Issue counts pending - verify from PDF report"
+      },
+      {
+        "auditor": "Spearbit",
+        "date": "2025-11",
+        "title": "PR Review",
+        "scope": "Pull request security review",
+        "report_url": "https://github.com/cap-labs-dev/cap-audits/blob/main/2025-11-27-Spearbit%20(PR%20Review).pdf",
+        "issues": {"critical": 0, "high": 0, "medium": 0, "low": 0},
+        "unresolved": {"critical": 0, "high": 0},
+        "notes": "Issue counts pending - verify from PDF report"
+      }
+    ],
+    "bug_bounty": "Sherlock",
+    "bug_bounty_max_payout": "$1,000,000",
+    "bug_bounty_url": "https://audits.sherlock.xyz/bug-bounties/114",
+    "notes": "Protocol has undergone extensive auditing from top-tier security firms."
+  },
+
+  "deployment_date": "2025-07-08",
+
+  "incidents": [],
+
+  "multisig_configs": [
+    {
+      "role_name": "protocol_admin",
+      "is_multisig": true,
+      "is_dao_voting": false,
+      "address": "0xb8FC49402dF3ee4f8587268FB89fda4d621a8793",
+      "threshold": 3,
+      "owners_count": 5,
+      "description": "Gnosis Safe v1.4.1 - 3-of-5 multisig"
+    }
+  ],
+
+  "has_timelock": true,
+  "timelock_hours": 24,
+  "timelock_address": "0xD8236031d8279d82E615aF2BFab5FC0127A329ab",
+  "timelock_details": "OpenZeppelin TimelockController with 24-hour (1 day) minimum delay for privileged operations.",
+
+  "custody_model": "decentralized",
+  "custodian": null,
+  "has_insurance": true,
+  "insurance_provider": "EigenLayer and Symbiotic restaker coverage via delegation system",
+  "has_blacklist": false,
+  "blacklist_control": null,
+
+  "critical_roles": ["protocol_admin"],
+  "role_weights": {"protocol_admin": 5},
+
+  "related_tokens": {
+    "stcUSD": {
+      "name": "Staked Cap USD",
+      "ethereum": "0x88887bE419578051FF9F4eb6C858A951921D8888"
+    }
+  },
+
+  "protocol_contracts": {
+    "access_control": "0x7731129a10d51e18cDE607C5C115F26503D2c683",
+    "lender": "0x15622c3dbbc5614E6DFa9446603c1779647f01FC",
+    "oracle": "0xcD7f45566bc0E7303fB92A93969BB4D3f6e662bb",
+    "delegation": "0xF3E3Eae671000612CE3Fd15e1019154C1a4d693F",
+    "harvester": "0xBF664De63168720b57f1c93581512E9580E3E6f8",
+    "timelock": "0xD8236031d8279d82E615aF2BFab5FC0127A329ab",
+    "fee_auction": "0xa1a20aBdc873CF291c22Ce3C8968EC06277324D0",
+    "fee_receiver": "0x0036c7b9b62c53F47c804a5643F0c09f864beF0b",
+    "vault_adapter": "0xC6504C2c918c8C17eE2F1e01AEFa43b1f27849eC",
+    "eigen_service_manager": "0xE65c3eccd18879E103dBC96D854e376Ced4cC7dd",
+    "eigen_agent_manager": "0xa82f6f9E67E127621F3e5F3953bEEf926b4B5bA9",
+    "symbiotic_network": "0x98e52Ea7578F2088c152E81b17A9a459bF089f2a",
+    "symbiotic_middleware": "0x09A3976d8D63728d20DCDFEe1e531C206Ba91225"
+  },
+
+  "rpc_urls": {
+    "ethereum": "https://lb.drpc.live/ethereum/AtiZvaKOcUmKq-AbTta3bRagNNpNbjkR8LQsEklbR4ac"
+  },
+
+  "blockscout_apis": {
+    "ethereum": "https://eth.blockscout.com/api/v2"
+  }
+}

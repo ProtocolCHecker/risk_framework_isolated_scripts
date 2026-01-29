@@ -1,0 +1,197 @@
+{
+  "asset_name": "Resolv Liquidity Provider Token",
+  "asset_symbol": "RLP",
+  "asset_type": "insurance_pool",
+  "underlying": "ETH",
+  "token_decimals": 18,
+
+  "token_addresses": [
+    {"chain": "ethereum", "address": "0x4956b52aE2fF65D74CA2d61207523288e4528f96"},
+    {"chain": "base", "address": "0xC31389794Ffac23331E0D9F611b7953f90AA5fDC"},
+    {"chain": "arbitrum", "address": "0x35E5dB674D8e93a03d814FA0ADa70731efe8a4b9"},
+    {"chain": "plasma", "address": "0x35533f54740f1f1aa4179e57ba37039dfa16868b"},
+    {"chain": "soneium", "address": "0x35533f54740f1f1aa4179e57ba37039dfa16868b"},
+    {"chain": "soneium", "address": "0x35533f54740f1f1aa4179e57ba37039dfa16868b"}
+  ],
+
+  "lending_configs": [],
+
+  "dex_pools": [
+    {
+      "protocol": "fluid",
+      "chain": "ethereum",
+      "pool_address": "0x50faCbcfBf9352523F82C67832E6d3D7Ce731D4c",
+      "pool_name": "RLP/USDC",
+      "lp_token": "0x10705D774fBE0a3802d7a915E23F6f2c109Fd77f",
+      "token0_coingecko_id": "resolv-rlp",
+      "token1_coingecko_id": "usd-coin",
+      "token0_decimals": 18,
+      "token1_decimals": 6,
+      "fee_tier": 0.05
+    }
+  ],
+
+  "proof_of_reserve": {
+    "verification_type": "apostro_scraper",
+    "token_coingecko_id": "resolv-rlp",
+    "nav_oracle_address": "0xAdb2c15Fde49D1A4294740aCb650de94184E66b2",
+    "nav_oracle_chain": "ethereum",
+    "nav_oracle_decimals": 8,
+    "description": "RLP is NAV-based. Price = backing per token. Compares on-chain NAV vs market price."
+  },
+
+  "price_risk": {
+    "token_coingecko_id": "resolv-rlp"
+  },
+
+  "oracle_lag": {
+    "price_feed_1": {"chain": "ethereum", "address": "0xaE2364579D6cB4Bbd6695846C1D595cA9AF3574d", "name": "RLP Fundamental Oracle"},
+    "price_feed_2": {"chain": "ethereum", "address": "0xAdb2c15Fde49D1A4294740aCb650de94184E66b2", "name": "RLP AggregatorV3"}
+  },
+
+  "oracle_freshness": {
+    "price_feeds": [
+      {"chain": "ethereum", "address": "0xaE2364579D6cB4Bbd6695846C1D595cA9AF3574d", "name": "RLP Fundamental Oracle"},
+      {"chain": "ethereum", "address": "0xAdb2c15Fde49D1A4294740aCb650de94184E66b2", "name": "RLP AggregatorV3"}
+    ]
+  },
+
+  "audit_data": {
+    "total_audits": {
+      "core_contracts": 7,
+      "extensions": 5
+    },
+    "auditors": [
+      "MixBytes",
+      "Pashov Audit Group",
+      "Sherlock",
+      "Pessimistic"
+    ],
+    "key_audits": [
+      {
+        "auditor": "Sherlock",
+        "date": "2024-11",
+        "title": "Core Contracts Comprehensive Review",
+        "scope": "Full protocol audit",
+        "issues": {"critical": 0, "high": 0, "medium": 0, "low": 0},
+        "unresolved": {"critical": 0, "high": 0}
+      },
+      {
+        "auditor": "MixBytes",
+        "date": "2024-08",
+        "title": "Treasury & Request Managers",
+        "issues": {"critical": 0, "high": 0, "medium": 0, "low": 0},
+        "unresolved": {"critical": 0, "high": 0}
+      },
+      {
+        "auditor": "Pashov",
+        "date": "2024-08",
+        "title": "Treasury Security Audit",
+        "issues": {"critical": 0, "high": 0, "medium": 0, "low": 0},
+        "unresolved": {"critical": 0, "high": 0}
+      },
+      {
+        "auditor": "Pessimistic",
+        "date": "2024-07",
+        "title": "Wrapped Staking (wstUSR)",
+        "issues": {"critical": 0, "high": 0, "medium": 0, "low": 0},
+        "unresolved": {"critical": 0, "high": 0}
+      },
+      {
+        "auditor": "MixBytes",
+        "date": "2025-07",
+        "title": "Treasury Extension",
+        "issues": {"critical": 0, "high": 0, "medium": 0, "low": 0},
+        "unresolved": {"critical": 0, "high": 0}
+      },
+      {
+        "auditor": "MixBytes",
+        "date": "2025-08",
+        "title": "Staking Contracts",
+        "issues": {"critical": 0, "high": 0, "medium": 0, "low": 0},
+        "unresolved": {"critical": 0, "high": 0}
+      },
+      {
+        "auditor": "MixBytes",
+        "date": "2025-11",
+        "title": "PoR Oracles",
+        "issues": {"critical": 0, "high": 0, "medium": 0, "low": 0},
+        "unresolved": {"critical": 0, "high": 0}
+      }
+    ],
+    "bug_bounty": "Immunefi",
+    "notes": "Protocol has continuous monitoring and Web2 security audits including penetration testing."
+  },
+
+  "deployment_date": "2024-09-01",
+
+  "incidents": [],
+
+  "multisig_configs": [
+    {
+      "role_name": "protocol_admin",
+      "is_multisig": true,
+      "is_dao_voting": false,
+      "address": "0xD6889F307BE1b83Bb355d5DA7d4478FB0d2Af547",
+      "threshold": 3,
+      "owners_count": 5,
+      "description": "Gnosis Safe v1.3.0 - 3-of-5 multisig"
+    }
+  ],
+
+  "has_timelock": false,
+  "timelock_hours": null,
+  "timelock_details": "No on-chain timelock contract found. RESOLV token holders can vote on protocol decisions.",
+
+  "custody_model": "decentralized",
+  "custodian": null,
+  "has_insurance": true,
+  "insurance_provider": "Self-insured via RLP pool mechanism",
+  "has_blacklist": false,
+  "blacklist_control": null,
+
+  "critical_roles": ["protocol_admin"],
+  "role_weights": {"protocol_admin": 5},
+
+  "related_tokens": {
+    "usr": {
+      "name": "Resolv USR Stablecoin",
+      "ethereum": "0x66a1e37c9b0eaddca17d3662d6c05f4decf3e110",
+      "base": "0x35E5dB674D8e93a03d814FA0ADa70731efe8a4b9"
+    },
+    "stUSR": {
+      "name": "Staked USR",
+      "ethereum": "0x6c8984bc7DBBeDAf4F6b2FD766f16eBB7d10AAb4"
+    },
+    "wstUSR": {
+      "name": "Wrapped Staked USR",
+      "ethereum": "0x1202F5C7b4B9E47a1A484E8B270be34dbbC75055"
+    },
+    "resolv": {
+      "name": "RESOLV Governance Token",
+      "ethereum": "0x259338656198eC7A76c729514D3CB45Dfbf768A1"
+    }
+  },
+
+  "protocol_contracts": {
+    "usr_requests_manager": "0xAC85eF29192487E0a109b7f9E40C267a9ea95f2e",
+    "rlp_requests_manager": "0x10f4d4EAd6Bcd4de7849898403d88528e3Dfc872",
+    "usr_counter": "0xa27a69Ae180e202fDe5D38189a3F24Fe24E55861",
+    "rlp_counter": "0xc7ab90c2ea9271efb31f5fa2843eeb4b331eafa0",
+    "fee_collector": "0x6E02e225329E32c854178d7c865cF70fE1617f02"
+  },
+
+  "rpc_urls": {
+    "ethereum": "https://lb.drpc.live/ethereum/AtiZvaKOcUmKq-AbTta3bRagNNpNbjkR8LQsEklbR4ac",
+    "arbitrum": "https://lb.drpc.live/arbitrum/AtiZvaKOcUmKq-AbTta3bRagNNpNbjkR8LQsEklbR4ac",
+    "base": "https://lb.drpc.live/base/AtiZvaKOcUmKq-AbTta3bRagNNpNbjkR8LQsEklbR4ac",
+    "plasma": "https://lb.drpc.live/plasma/AtiZvaKOcUmKq-AbTta3bRagNNpNbjkR8LQsEklbR4ac",
+    "soneium": "https://lb.drpc.live/soneium/AtiZvaKOcUmKq-AbTta3bRagNNpNbjkR8LQsEklbR4ac"
+  },
+
+  "blockscout_apis": {
+    "ethereum": "https://eth.blockscout.com/api/v2",
+    "arbitrum": "https://arbitrum.blockscout.com/api/v2",
+    "base": "https://base.blockscout.com/api/v2"
+  }
+}

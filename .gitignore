@@ -9,6 +9,7 @@ __pycache__/
 !example_cbbtc_config.json
 !example_rlp_config.json
 !example_cusd_config.json
+!assets/*.json
 
 # Presentations
 *.pptx
