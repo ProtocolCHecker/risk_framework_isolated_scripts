@@ -1397,17 +1397,39 @@ def run_full_analysis(fetch_live_data: bool = False):
 # =============================================================================
 
 def render_tab_risk_score():
-    st.header("📊 Risk Score")
-
     if not st.session_state.get("analysis_run"):
+        st.header("📊 Risk Score")
         st.info("👈 Run an analysis first in the **Configuration** tab.")
         return
 
     risk_score = st.session_state.risk_score
     config = st.session_state.config
+    asset = risk_score.get("asset", {})
+
+    # Header with export button
+    col_title, col_export = st.columns([4, 1])
+    with col_title:
+        st.header("📊 Risk Score")
+    with col_export:
+        # Prepare export data
+        export_data = {
+            "export_metadata": {
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "framework_version": "1.0",
+            },
+            "risk_score": risk_score,
+        }
+        symbol = asset.get("symbol", "asset").replace("/", "-")
+        timestamp_str = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"risk_score_{symbol}_{timestamp_str}.json"
+        st.download_button(
+            label="📥 Export JSON",
+            data=json.dumps(export_data, indent=2, default=str),
+            file_name=filename,
+            mime="application/json",
+        )
 
     # Asset header
-    asset = risk_score.get("asset", {})
     st.markdown(f"## {asset.get('name', 'Unknown')} ({asset.get('symbol', '???')})")
 
     # Stage 1: Primary Checks
@@ -1491,34 +1513,6 @@ def render_tab_risk_score():
                     st.metric(metric_key.replace("_", " ").title(), f"{metric.get('score', 0):.1f}")
                 with col2:
                     st.markdown(metric.get("justification", ""))
-
-    # -------------------------------------------------------------------------
-    # JSON Export Section
-    # -------------------------------------------------------------------------
-    st.divider()
-    st.subheader("Export Results")
-
-    # Prepare export data with metadata
-    export_data = {
-        "export_metadata": {
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-            "framework_version": "1.0",
-        },
-        "risk_score": risk_score,
-    }
-
-    # Generate filename with asset symbol and timestamp
-    symbol = asset.get("symbol", "asset").replace("/", "-")
-    timestamp_str = datetime.now().strftime("%Y%m%d_%H%M%S")
-    filename = f"risk_score_{symbol}_{timestamp_str}.json"
-
-    st.download_button(
-        label="📥 Download Risk Score (JSON)",
-        data=json.dumps(export_data, indent=2, default=str),
-        file_name=filename,
-        mime="application/json",
-        help="Download the complete risk analysis results as a JSON file",
-    )
 
 
 # =============================================================================
