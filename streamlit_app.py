@@ -977,6 +977,9 @@ def fetch_oracle_data(config: dict) -> dict:
     oracle_freshness_config = config.get("oracle_freshness", {})
     price_feeds = oracle_freshness_config.get("price_feeds", [])
 
+    # Get RPC URLs from config (for custom RPCs like dRPC)
+    rpc_urls = config.get("rpc_urls", {})
+
     # Get oracle lag config - support both por_feed_X and price_feed_X formats
     oracle_lag_config = config.get("oracle_lag", {})
     feed_1 = oracle_lag_config.get("por_feed_1") or oracle_lag_config.get("price_feed_1") or {}
@@ -991,10 +994,14 @@ def fetch_oracle_data(config: dict) -> dict:
         if not address:
             continue
 
+        # Use custom RPC from config if available
+        custom_rpc = rpc_urls.get(chain)
+
         try:
             freshness_result = get_oracle_freshness(
                 oracle_addresses=[address],
-                chain_name=chain
+                chain_name=chain,
+                custom_rpc=custom_rpc
             )
 
             if freshness_result.get("status") == "success":
@@ -1046,7 +1053,9 @@ def fetch_oracle_data(config: dict) -> dict:
                     chain1_name=chain1,
                     oracle1_address=feed_1.get("address"),
                     chain2_name=chain2,
-                    oracle2_address=feed_2.get("address")
+                    oracle2_address=feed_2.get("address"),
+                    chain1_rpc=rpc_urls.get(chain1),
+                    chain2_rpc=rpc_urls.get(chain2)
                 )
 
                 if lag_result.get("status") == "success":
