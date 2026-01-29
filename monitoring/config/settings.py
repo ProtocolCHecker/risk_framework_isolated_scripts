@@ -23,6 +23,7 @@ TABLE_PREFIX = "rm_"  # risk monitoring prefix
 
 # Alert notification settings
 ALERT_CONFIG = {
+    "slack_webhook": os.getenv("SLACK_WEBHOOK_URL"),
     "discord_webhook": os.getenv("DISCORD_WEBHOOK_URL"),
     "telegram_bot_token": os.getenv("TELEGRAM_BOT_TOKEN"),
     "telegram_chat_id": os.getenv("TELEGRAM_CHAT_ID"),
