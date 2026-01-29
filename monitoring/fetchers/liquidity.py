@@ -38,6 +38,12 @@ def fetch_slippage_metrics(asset_config: Dict[str, Any]) -> Dict[str, Any]:
         result["error"] = "No dex_pools configured"
         return result
 
+    # Get coingecko_id from various possible locations in config
+    asset_coingecko_id = (
+        asset_config.get("coingecko_id") or
+        asset_config.get("price_risk", {}).get("token_coingecko_id")
+    )
+
     metrics = []
 
     # Process each chain's DEX pools
@@ -56,7 +62,8 @@ def fetch_slippage_metrics(asset_config: Dict[str, Any]) -> Dict[str, Any]:
             sell_decimals = pool.get("decimals", 18)
             sell_symbol = pool.get("symbol", symbol)
             buy_symbol = pool.get("quote_symbol", "USDC")
-            coingecko_id = pool.get("coingecko_id")
+            # Check pool-level first, then asset-level coingecko_id
+            coingecko_id = pool.get("coingecko_id") or asset_coingecko_id
             price_usd = pool.get("price_usd")
 
             # Define trade sizes

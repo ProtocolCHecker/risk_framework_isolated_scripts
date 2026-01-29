@@ -355,7 +355,17 @@ def _normalize_dex_config(config: Dict) -> Dict:
     """Normalize asset config to DEX/liquidity fetcher format."""
     normalized = {
         "asset_symbol": config.get("asset_symbol", "UNKNOWN"),
-        "dex_pools": {}
+        "dex_pools": {},
+        # Pass through coingecko_id and price_risk for slippage price lookup
+        "coingecko_id": config.get("coingecko_id"),
+        "price_risk": config.get("price_risk", {}),
+        "token_decimals": config.get("token_decimals", 18),
+    }
+
+    # Get token addresses for sell_token lookup
+    token_addresses = {
+        ta.get("chain"): ta.get("address")
+        for ta in config.get("token_addresses", [])
     }
 
     # Convert dex_pools list to dict format
@@ -364,7 +374,15 @@ def _normalize_dex_config(config: Dict) -> Dict:
             chain = pool.get("chain", "ethereum")
             if chain not in normalized["dex_pools"]:
                 normalized["dex_pools"][chain] = []
-            normalized["dex_pools"][chain].append(pool)
+
+            # Enrich pool with token address if not present
+            enriched_pool = dict(pool)
+            if not enriched_pool.get("token_address") and not enriched_pool.get("sell_token"):
+                enriched_pool["token_address"] = token_addresses.get(chain)
+            if not enriched_pool.get("decimals"):
+                enriched_pool["decimals"] = normalized["token_decimals"]
+
+            normalized["dex_pools"][chain].append(enriched_pool)
     elif isinstance(config.get("dex_pools"), dict):
         normalized["dex_pools"] = config["dex_pools"]
 

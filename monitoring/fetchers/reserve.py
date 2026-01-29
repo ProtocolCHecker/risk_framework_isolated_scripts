@@ -41,11 +41,12 @@ def fetch_por_metrics(asset_config: Dict[str, Any]) -> Dict[str, Any]:
 
     metrics = []
 
-    # Check the type of PoR
-    por_type = por_config.get("type", "chainlink")
+    # Check the type of PoR (handle both 'type' and 'verification_type' keys)
+    por_type = por_config.get("type") or por_config.get("verification_type", "chainlink")
     por_scope = por_config.get("por_scope", "single_chain")
 
-    if por_type == "fractional":
+    # Normalize por_type variations
+    if por_type in ["fractional", "fractional_reserve"]:
         # Use fractional reserve fetcher
         por_result = fetch_fractional_reserve_data(por_config, rpc_urls)
 
