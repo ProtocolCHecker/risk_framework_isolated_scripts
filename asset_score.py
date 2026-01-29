@@ -77,11 +77,21 @@ CUSTODY_MODELS = {
 # =============================================================================
 
 def score_to_grade(score: float) -> str:
-    """Convert numeric score to letter grade."""
-    for grade, config in GRADE_SCALE.items():
-        if config["min"] <= score <= config["max"]:
-            return grade
-    return "F"
+    """Convert numeric score to letter grade.
+
+    Uses minimum thresholds only to avoid gaps with decimal scores.
+    Grades are checked in descending order (A -> F).
+    """
+    if score >= 85:
+        return "A"
+    elif score >= 70:
+        return "B"
+    elif score >= 55:
+        return "C"
+    elif score >= 40:
+        return "D"
+    else:
+        return "F"
 
 
 def get_grade_info(grade: str) -> dict:

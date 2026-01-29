@@ -1492,6 +1492,34 @@ def render_tab_risk_score():
                 with col2:
                     st.markdown(metric.get("justification", ""))
 
+    # -------------------------------------------------------------------------
+    # JSON Export Section
+    # -------------------------------------------------------------------------
+    st.divider()
+    st.subheader("Export Results")
+
+    # Prepare export data with metadata
+    export_data = {
+        "export_metadata": {
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "framework_version": "1.0",
+        },
+        "risk_score": risk_score,
+    }
+
+    # Generate filename with asset symbol and timestamp
+    symbol = asset.get("symbol", "asset").replace("/", "-")
+    timestamp_str = datetime.now().strftime("%Y%m%d_%H%M%S")
+    filename = f"risk_score_{symbol}_{timestamp_str}.json"
+
+    st.download_button(
+        label="📥 Download Risk Score (JSON)",
+        data=json.dumps(export_data, indent=2, default=str),
+        file_name=filename,
+        mime="application/json",
+        help="Download the complete risk analysis results as a JSON file",
+    )
+
 
 # =============================================================================
 # TAB 2: SCORING METHODOLOGY
