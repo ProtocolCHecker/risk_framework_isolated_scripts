@@ -1,0 +1,16 @@
+# Lambda Layer Dependencies for Risk Monitoring System
+#
+# These dependencies are required for the Lambda functions.
+# Install with: pip install -r requirements.txt -t ./python/lib/python3.11/site-packages/
+
+# Database
+psycopg2-binary>=2.9.9
+
+# HTTP requests
+requests>=2.31.0
+
+# Ethereum/Web3
+web3>=6.11.0
+
+# Environment
+python-dotenv>=1.0.0

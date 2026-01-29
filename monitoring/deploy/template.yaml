@@ -1,0 +1,228 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: Risk Monitoring System - Lambda Handlers for scheduled metric collection
+
+Parameters:
+  Environment:
+    Type: String
+    Default: production
+    AllowedValues:
+      - production
+      - staging
+    Description: Deployment environment
+
+  DatabaseHost:
+    Type: String
+    Description: RDS PostgreSQL host endpoint
+    NoEcho: true
+
+  DatabaseName:
+    Type: String
+    Default: morpho
+    Description: Database name
+
+  DatabaseUser:
+    Type: String
+    Description: Database username
+    NoEcho: true
+
+  DatabasePassword:
+    Type: String
+    Description: Database password
+    NoEcho: true
+
+  TelegramBotToken:
+    Type: String
+    Description: Telegram Bot API token
+    NoEcho: true
+
+  TelegramChatId:
+    Type: String
+    Description: Telegram Chat ID for alerts
+
+  VpcSubnetIds:
+    Type: CommaDelimitedList
+    Description: VPC Subnet IDs (for RDS access)
+
+  VpcSecurityGroupIds:
+    Type: CommaDelimitedList
+    Description: VPC Security Group IDs (for RDS access)
+
+Globals:
+  Function:
+    Runtime: python3.11
+    Timeout: 300
+    MemorySize: 512
+    Environment:
+      Variables:
+        ENVIRONMENT: !Ref Environment
+        DB_HOST: !Ref DatabaseHost
+        DB_NAME: !Ref DatabaseName
+        DB_USER: !Ref DatabaseUser
+        DB_PASSWORD: !Ref DatabasePassword
+        DB_PORT: '5432'
+        TELEGRAM_BOT_TOKEN: !Ref TelegramBotToken
+        TELEGRAM_CHAT_ID: !Ref TelegramChatId
+    VpcConfig:
+      SubnetIds: !Ref VpcSubnetIds
+      SecurityGroupIds: !Ref VpcSecurityGroupIds
+
+Resources:
+  # ==========================================================================
+  # CRITICAL FREQUENCY (5 min) - PoR, Oracle Freshness, Peg Deviation
+  # ==========================================================================
+  CriticalMetricsFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub 'risk-monitoring-critical-${Environment}'
+      Description: Critical frequency metrics (5 min) - PoR, oracle, peg deviation
+      Handler: handlers.critical_handler.handler
+      CodeUri: ../
+      Timeout: 180
+      MemorySize: 512
+      Events:
+        ScheduleEvent:
+          Type: Schedule
+          Properties:
+            Schedule: rate(5 minutes)
+            Name: !Sub 'risk-critical-schedule-${Environment}'
+            Description: Trigger critical metrics every 5 minutes
+            Enabled: true
+
+  # ==========================================================================
+  # HIGH FREQUENCY (30 min) - TVL, Utilization, Slippage
+  # ==========================================================================
+  HighMetricsFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub 'risk-monitoring-high-${Environment}'
+      Description: High frequency metrics (30 min) - TVL, utilization, slippage
+      Handler: handlers.high_handler.handler
+      CodeUri: ../
+      Timeout: 300
+      MemorySize: 1024
+      Events:
+        ScheduleEvent:
+          Type: Schedule
+          Properties:
+            Schedule: rate(30 minutes)
+            Name: !Sub 'risk-high-schedule-${Environment}'
+            Description: Trigger high frequency metrics every 30 minutes
+            Enabled: true
+
+  # ==========================================================================
+  # MEDIUM FREQUENCY (6 hr) - HHI, Gini, CLR, RLR
+  # ==========================================================================
+  MediumMetricsFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub 'risk-monitoring-medium-${Environment}'
+      Description: Medium frequency metrics (6 hr) - HHI, Gini, CLR, RLR
+      Handler: handlers.medium_handler.handler
+      CodeUri: ../
+      Timeout: 600
+      MemorySize: 1024
+      Events:
+        ScheduleEvent:
+          Type: Schedule
+          Properties:
+            Schedule: rate(6 hours)
+            Name: !Sub 'risk-medium-schedule-${Environment}'
+            Description: Trigger medium frequency metrics every 6 hours
+            Enabled: true
+
+  # ==========================================================================
+  # DAILY FREQUENCY (24 hr) - Volatility, VaR
+  # ==========================================================================
+  DailyMetricsFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub 'risk-monitoring-daily-${Environment}'
+      Description: Daily frequency metrics (24 hr) - Volatility, VaR
+      Handler: handlers.daily_handler.handler
+      CodeUri: ../
+      Timeout: 600
+      MemorySize: 512
+      Events:
+        ScheduleEvent:
+          Type: Schedule
+          Properties:
+            Schedule: rate(1 day)
+            Name: !Sub 'risk-daily-schedule-${Environment}'
+            Description: Trigger daily metrics once per day
+            Enabled: true
+
+  # ==========================================================================
+  # NOTIFICATION HANDLER - Process pending alerts
+  # ==========================================================================
+  NotificationFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub 'risk-monitoring-notifications-${Environment}'
+      Description: Process and send pending alerts via Telegram
+      Handler: handlers.notification_handler.handler
+      CodeUri: ../
+      Timeout: 60
+      MemorySize: 256
+      Events:
+        ScheduleEvent:
+          Type: Schedule
+          Properties:
+            Schedule: rate(5 minutes)
+            Name: !Sub 'risk-notifications-schedule-${Environment}'
+            Description: Process pending notifications every 5 minutes
+            Enabled: true
+
+  # ==========================================================================
+  # CLOUDWATCH LOG GROUPS (with retention)
+  # ==========================================================================
+  CriticalLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/risk-monitoring-critical-${Environment}'
+      RetentionInDays: 30
+
+  HighLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/risk-monitoring-high-${Environment}'
+      RetentionInDays: 30
+
+  MediumLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/risk-monitoring-medium-${Environment}'
+      RetentionInDays: 30
+
+  DailyLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/risk-monitoring-daily-${Environment}'
+      RetentionInDays: 30
+
+  NotificationLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/risk-monitoring-notifications-${Environment}'
+      RetentionInDays: 30
+
+Outputs:
+  CriticalFunctionArn:
+    Description: Critical metrics Lambda ARN
+    Value: !GetAtt CriticalMetricsFunction.Arn
+
+  HighFunctionArn:
+    Description: High frequency metrics Lambda ARN
+    Value: !GetAtt HighMetricsFunction.Arn
+
+  MediumFunctionArn:
+    Description: Medium frequency metrics Lambda ARN
+    Value: !GetAtt MediumMetricsFunction.Arn
+
+  DailyFunctionArn:
+    Description: Daily metrics Lambda ARN
+    Value: !GetAtt DailyMetricsFunction.Arn
+
+  NotificationFunctionArn:
+    Description: Notification Lambda ARN
+    Value: !GetAtt NotificationFunction.Arn

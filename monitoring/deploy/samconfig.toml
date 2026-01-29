@@ -1,0 +1,46 @@
+# SAM CLI Configuration for Risk Monitoring System
+#
+# Usage:
+#   sam build
+#   sam deploy --guided  (first time)
+#   sam deploy           (subsequent deployments)
+
+version = 0.1
+
+[default.deploy.parameters]
+stack_name = "risk-monitoring-system"
+resolve_s3 = true
+s3_prefix = "risk-monitoring-system"
+region = "eu-west-1"
+confirm_changeset = true
+capabilities = "CAPABILITY_IAM CAPABILITY_AUTO_EXPAND"
+
+# Parameter overrides (update with your values)
+# These will be prompted during `sam deploy --guided`
+# parameter_overrides = """
+#   Environment=production
+#   DatabaseHost=your-rds-endpoint.region.rds.amazonaws.com
+#   DatabaseName=morpho
+#   DatabaseUser=your-username
+#   DatabasePassword=your-password
+#   TelegramBotToken=your-bot-token
+#   TelegramChatId=your-chat-id
+#   VpcSubnetIds=subnet-xxx,subnet-yyy
+#   VpcSecurityGroupIds=sg-xxx
+# """
+
+[production.deploy.parameters]
+stack_name = "risk-monitoring-production"
+resolve_s3 = true
+s3_prefix = "risk-monitoring-production"
+region = "eu-west-1"
+confirm_changeset = true
+capabilities = "CAPABILITY_IAM CAPABILITY_AUTO_EXPAND"
+
+[staging.deploy.parameters]
+stack_name = "risk-monitoring-staging"
+resolve_s3 = true
+s3_prefix = "risk-monitoring-staging"
+region = "eu-west-1"
+confirm_changeset = true
+capabilities = "CAPABILITY_IAM CAPABILITY_AUTO_EXPAND"
