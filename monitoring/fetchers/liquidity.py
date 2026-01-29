@@ -15,6 +15,17 @@ from slippage_check import cross_verify_slippage, get_token_price
 from monitoring.core.db import insert_metrics_batch
 
 
+# Default USDC addresses by chain (for slippage quote token)
+USDC_ADDRESSES = {
+    "ethereum": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+    "arbitrum": "0xaf88d065e77c8cC2239327C5EDb3A432268e5831",  # Native USDC
+    "optimism": "0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85",  # Native USDC
+    "base": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",      # Native USDC
+    "polygon": "0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359",   # Native USDC
+    "avalanche": "0xB97EF9Ef8734C71904D8002F8b6Bc66Dd9c48a6E",
+}
+
+
 def fetch_slippage_metrics(asset_config: Dict[str, Any]) -> Dict[str, Any]:
     """
     Fetch slippage metrics from DEX aggregators.
@@ -44,6 +55,15 @@ def fetch_slippage_metrics(asset_config: Dict[str, Any]) -> Dict[str, Any]:
         asset_config.get("price_risk", {}).get("token_coingecko_id")
     )
 
+    # Build token address lookup from token_addresses
+    token_addresses_by_chain = {
+        ta.get("chain"): ta.get("address")
+        for ta in asset_config.get("token_addresses", [])
+    }
+
+    # Get token decimals from config
+    token_decimals = asset_config.get("token_decimals", 18)
+
     metrics = []
 
     # Process each chain's DEX pools
@@ -53,14 +73,31 @@ def fetch_slippage_metrics(asset_config: Dict[str, Any]) -> Dict[str, Any]:
 
         for pool in pools:
             # Extract pool configuration
-            sell_token = pool.get("token_address") or pool.get("sell_token")
-            buy_token = pool.get("quote_token") or pool.get("buy_token")
+            # Try pool-level first, then fall back to asset-level token address
+            sell_token = (
+                pool.get("token_address") or
+                pool.get("sell_token") or
+                token_addresses_by_chain.get(chain)
+            )
 
-            if not sell_token or not buy_token:
+            # Use pool quote_token if specified, otherwise default to USDC
+            buy_token = (
+                pool.get("quote_token") or
+                pool.get("buy_token") or
+                USDC_ADDRESSES.get(chain)
+            )
+
+            if not sell_token:
+                print(f"  Skipping {pool.get('pool_name', 'unknown')} on {chain}: no sell_token")
                 continue
 
-            sell_decimals = pool.get("decimals", 18)
+            if not buy_token:
+                print(f"  Skipping {pool.get('pool_name', 'unknown')} on {chain}: no USDC address for chain")
+                continue
+
+            sell_decimals = pool.get("decimals") or token_decimals
             sell_symbol = pool.get("symbol", symbol)
+            # Default to USDC (6 decimals) if using default quote token
             buy_symbol = pool.get("quote_symbol", "USDC")
             # Check pool-level first, then asset-level coingecko_id
             coingecko_id = pool.get("coingecko_id") or asset_coingecko_id
