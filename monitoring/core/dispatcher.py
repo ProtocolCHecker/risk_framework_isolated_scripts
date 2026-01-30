@@ -305,154 +305,84 @@ def dispatch_daily(asset_configs: List[Dict] = None) -> Dict[str, Any]:
 # =============================================================================
 
 def _normalize_oracle_config(config: Dict) -> Dict:
-    """Normalize asset config to oracle fetcher format."""
-    normalized = {
+    """
+    Normalize asset config to oracle fetcher format.
+
+    The fetcher now handles both oracle_freshness.price_feeds (list) and
+    oracles (dict) formats directly.
+    """
+    # Pass through config - fetcher handles both formats
+    return {
         "asset_symbol": config.get("asset_symbol", "UNKNOWN"),
+        "oracle_freshness": config.get("oracle_freshness", {}),  # New format
+        "oracles": config.get("oracles", {}),  # Legacy format
         "rpc_urls": config.get("rpc_urls", {})
     }
 
-    # Handle different oracle config formats
-    if config.get("oracles"):
-        normalized["oracles"] = config["oracles"]
-    elif config.get("oracle_freshness", {}).get("price_feeds"):
-        # Convert from oracle_freshness format
-        oracles = {}
-        for feed in config["oracle_freshness"]["price_feeds"]:
-            chain = feed.get("chain", "ethereum")
-            if chain not in oracles:
-                oracles[chain] = []
-            oracles[chain].append({
-                "address": feed.get("address"),
-                "name": feed.get("name")
-            })
-        normalized["oracles"] = oracles
-
-    return normalized
-
 
 def _normalize_market_config(config: Dict) -> Dict:
-    """Normalize asset config to market fetcher format."""
-    normalized = {
+    """
+    Normalize asset config to market fetcher format.
+
+    The fetcher now handles price_risk.token_coingecko_id directly.
+    """
+    # Pass through config - fetcher handles both formats
+    return {
         "asset_symbol": config.get("asset_symbol", "UNKNOWN"),
+        "price_risk": config.get("price_risk", {}),  # New format with coingecko IDs
+        "coingecko_id": config.get("coingecko_id"),  # Legacy format
+        "underlying_coingecko_id": config.get("underlying_coingecko_id")  # Legacy format
     }
-
-    # Handle coingecko_id from different locations
-    if config.get("coingecko_id"):
-        normalized["coingecko_id"] = config["coingecko_id"]
-    elif config.get("price_risk", {}).get("token_coingecko_id"):
-        normalized["coingecko_id"] = config["price_risk"]["token_coingecko_id"]
-
-    # Handle underlying for peg deviation
-    if config.get("underlying_coingecko_id"):
-        normalized["underlying_coingecko_id"] = config["underlying_coingecko_id"]
-    elif config.get("price_risk", {}).get("underlying_coingecko_id"):
-        normalized["underlying_coingecko_id"] = config["price_risk"]["underlying_coingecko_id"]
-
-    return normalized
 
 
 def _normalize_dex_config(config: Dict) -> Dict:
-    """Normalize asset config to DEX/liquidity fetcher format."""
-    normalized = {
+    """
+    Normalize asset config to DEX/liquidity fetcher format.
+
+    The fetcher now handles both list and dict formats directly,
+    so we pass through the config with required fields.
+    """
+    # Pass through config - fetcher handles both formats
+    return {
         "asset_symbol": config.get("asset_symbol", "UNKNOWN"),
-        "dex_pools": {},
-        # Pass through coingecko_id and price_risk for slippage price lookup
-        "coingecko_id": config.get("coingecko_id"),
+        "dex_pools": config.get("dex_pools", []),  # Keep as-is (list or dict)
+        "token_addresses": config.get("token_addresses", []),
         "price_risk": config.get("price_risk", {}),
         "token_decimals": config.get("token_decimals", 18),
     }
 
-    # Get token addresses for sell_token lookup
-    token_addresses = {
-        ta.get("chain"): ta.get("address")
-        for ta in config.get("token_addresses", [])
-    }
-
-    # Convert dex_pools list to dict format
-    if isinstance(config.get("dex_pools"), list):
-        for pool in config["dex_pools"]:
-            chain = pool.get("chain", "ethereum")
-            if chain not in normalized["dex_pools"]:
-                normalized["dex_pools"][chain] = []
-
-            # Enrich pool with token address if not present
-            enriched_pool = dict(pool)
-            if not enriched_pool.get("token_address") and not enriched_pool.get("sell_token"):
-                enriched_pool["token_address"] = token_addresses.get(chain)
-            if not enriched_pool.get("decimals"):
-                enriched_pool["decimals"] = normalized["token_decimals"]
-
-            normalized["dex_pools"][chain].append(enriched_pool)
-    elif isinstance(config.get("dex_pools"), dict):
-        normalized["dex_pools"] = config["dex_pools"]
-
-    return normalized
-
 
 def _normalize_lending_config(config: Dict) -> Dict:
-    """Normalize asset config to lending fetcher format."""
-    normalized = {
+    """
+    Normalize asset config to lending fetcher format.
+
+    The fetcher now handles both lending_configs (list) and
+    lending_markets (dict) formats directly.
+    """
+    # Pass through config - fetcher handles both formats
+    return {
         "asset_symbol": config.get("asset_symbol", "UNKNOWN"),
-        "lending_markets": {},
+        "lending_configs": config.get("lending_configs", []),  # New format
+        "lending_markets": config.get("lending_markets", {}),  # Legacy format
         "rpc_urls": config.get("rpc_urls", {})
     }
 
-    # Handle lending_markets dict format
-    if config.get("lending_markets"):
-        normalized["lending_markets"] = config["lending_markets"]
-
-    # Handle lending_configs list format (convert to dict)
-    elif config.get("lending_configs"):
-        aave_markets = {}
-        compound_markets = {}
-
-        for lc in config["lending_configs"]:
-            protocol = lc.get("protocol", "").lower()
-            chain = lc.get("chain", "ethereum")
-
-            if protocol == "aave":
-                aave_markets[chain] = {
-                    "token_address": lc.get("token_address"),
-                    "pool_address": lc.get("pool")
-                }
-            elif protocol == "compound":
-                compound_markets[chain] = {
-                    "collateral_address": lc.get("token_address"),
-                    "comet_address": lc.get("comet_address")
-                }
-
-        if aave_markets:
-            normalized["lending_markets"]["aave"] = aave_markets
-        if compound_markets:
-            normalized["lending_markets"]["compound"] = compound_markets
-
-    return normalized
-
 
 def _normalize_distribution_config(config: Dict) -> Dict:
-    """Normalize asset config to distribution fetcher format."""
-    normalized = {
+    """
+    Normalize asset config to distribution fetcher format.
+
+    The fetcher now handles both token_addresses (list) and
+    chains (dict) formats directly.
+    """
+    # Pass through config - fetcher handles both formats
+    return {
         "asset_symbol": config.get("asset_symbol", "UNKNOWN"),
-        "chains": {}
+        "token_addresses": config.get("token_addresses", []),  # New format
+        "chains": config.get("chains", {}),  # Legacy format
+        "token_decimals": config.get("token_decimals", 18),
+        "blockscout_apis": config.get("blockscout_apis", {})
     }
-
-    # Handle chains dict format
-    if config.get("chains"):
-        normalized["chains"] = config["chains"]
-
-    # Handle token_addresses list format (convert to dict)
-    elif config.get("token_addresses"):
-        blockscout_apis = config.get("blockscout_apis", {})
-
-        for ta in config["token_addresses"]:
-            chain = ta.get("chain", "ethereum")
-            normalized["chains"][chain] = {
-                "token_address": ta.get("address"),
-                "decimals": config.get("token_decimals", 18),
-                "blockscout_url": blockscout_apis.get(chain)
-            }
-
-    return normalized
 
 
 # =============================================================================

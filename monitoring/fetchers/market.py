@@ -24,6 +24,10 @@ def fetch_price_risk_metrics(asset_config: Dict[str, Any], days: int = 365) -> D
     """
     Fetch price risk metrics from CoinGecko.
 
+    Supports both config formats:
+    - New format: price_risk.token_coingecko_id
+    - Legacy format: coingecko_id (top-level)
+
     Args:
         asset_config: Asset configuration containing coingecko_id
         days: Number of days of historical data to analyze
@@ -38,10 +42,17 @@ def fetch_price_risk_metrics(asset_config: Dict[str, Any], days: int = 365) -> D
     }
 
     symbol = asset_config.get("asset_symbol", "UNKNOWN")
-    coingecko_id = asset_config.get("coingecko_id")
+
+    # Try new format first: price_risk.token_coingecko_id
+    price_risk = asset_config.get("price_risk", {})
+    coingecko_id = price_risk.get("token_coingecko_id")
+
+    # Fall back to legacy format: top-level coingecko_id
+    if not coingecko_id:
+        coingecko_id = asset_config.get("coingecko_id")
 
     if not coingecko_id:
-        result["error"] = "No coingecko_id configured"
+        result["error"] = "No coingecko_id configured (need price_risk.token_coingecko_id)"
         return result
 
     metrics = []
@@ -136,6 +147,10 @@ def fetch_peg_deviation(asset_config: Dict[str, Any], days: int = 365) -> Dict[s
     """
     Fetch peg deviation metrics for pegged assets.
 
+    Supports both config formats:
+    - New format: price_risk.token_coingecko_id, price_risk.underlying_coingecko_id
+    - Legacy format: coingecko_id, underlying_coingecko_id (top-level)
+
     Args:
         asset_config: Asset configuration containing coingecko_id and underlying_id
         days: Number of days of historical data
@@ -150,8 +165,11 @@ def fetch_peg_deviation(asset_config: Dict[str, Any], days: int = 365) -> Dict[s
     }
 
     symbol = asset_config.get("asset_symbol", "UNKNOWN")
-    coingecko_id = asset_config.get("coingecko_id")
-    underlying_id = asset_config.get("underlying_coingecko_id")
+
+    # Try new format first: price_risk
+    price_risk = asset_config.get("price_risk", {})
+    coingecko_id = price_risk.get("token_coingecko_id") or asset_config.get("coingecko_id")
+    underlying_id = price_risk.get("underlying_coingecko_id") or asset_config.get("underlying_coingecko_id")
 
     if not coingecko_id:
         result["error"] = "No coingecko_id configured"
@@ -259,8 +277,12 @@ def fetch_all_market_metrics(asset_config: Dict[str, Any]) -> Dict[str, Any]:
     if risk_result.get("status") == "success":
         all_metrics.extend(risk_result.get("metrics", []))
 
+    # Check if underlying is configured (new format or legacy)
+    price_risk = asset_config.get("price_risk", {})
+    underlying_id = price_risk.get("underlying_coingecko_id") or asset_config.get("underlying_coingecko_id")
+
     # Fetch peg deviation if underlying is configured
-    if asset_config.get("underlying_coingecko_id"):
+    if underlying_id:
         peg_result = fetch_peg_deviation(asset_config)
         if peg_result.get("status") == "success":
             all_metrics.extend(peg_result.get("metrics", []))
@@ -311,11 +333,13 @@ def fetch_and_store_market_metrics(asset_config: Dict[str, Any]) -> Dict[str, An
 
 
 if __name__ == "__main__":
-    # Test with example config
+    # Test with example config (matches actual config format)
     test_config = {
         "asset_symbol": "wstETH",
-        "coingecko_id": "wrapped-steth",
-        "underlying_coingecko_id": "ethereum"
+        "price_risk": {
+            "token_coingecko_id": "wrapped-steth",
+            "underlying_coingecko_id": "ethereum"
+        }
     }
 
     print("Testing market fetcher...")

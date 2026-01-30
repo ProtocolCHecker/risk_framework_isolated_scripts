@@ -24,8 +24,12 @@ def fetch_aave_metrics(asset_config: Dict[str, Any]) -> Dict[str, Any]:
     """
     Fetch AAVE V3 lending metrics for an asset.
 
+    Supports both config formats:
+    - New format: lending_configs (list of {protocol, chain, token_address, ...})
+    - Legacy format: lending_markets.aave (dict)
+
     Args:
-        asset_config: Asset configuration containing lending_markets info
+        asset_config: Asset configuration containing lending configs
 
     Returns:
         Dict with status and fetched metrics
@@ -37,43 +41,55 @@ def fetch_aave_metrics(asset_config: Dict[str, Any]) -> Dict[str, Any]:
     }
 
     symbol = asset_config.get("asset_symbol", "UNKNOWN")
-    lending_markets = asset_config.get("lending_markets", {})
-    aave_config = lending_markets.get("aave", {})
 
-    if not aave_config:
+    # Get AAVE configs from new format (lending_configs list)
+    lending_configs = asset_config.get("lending_configs", [])
+    aave_configs = [cfg for cfg in lending_configs if cfg.get("protocol") == "aave"]
+
+    # Fall back to legacy format (lending_markets.aave dict)
+    if not aave_configs:
+        lending_markets = asset_config.get("lending_markets", {})
+        legacy_aave = lending_markets.get("aave", {})
+        if legacy_aave:
+            # Convert legacy format to list format
+            for chain_name, chain_data in legacy_aave.items():
+                if chain_data.get("token_address"):
+                    aave_configs.append({
+                        "protocol": "aave",
+                        "chain": chain_name,
+                        "token_address": chain_data.get("token_address")
+                    })
+
+    if not aave_configs:
         result["error"] = "No AAVE configuration"
         return result
 
     metrics = []
-    chains_processed = 0
+    processed_chains = set()
 
-    # Process each chain
-    for chain_name, chain_data in aave_config.items():
-        token_address = chain_data.get("token_address")
-        if not token_address:
+    # Process each AAVE config (same pattern as streamlit)
+    for cfg in aave_configs:
+        chain_name = cfg.get("chain", "").capitalize()
+        token_address = cfg.get("token_address")
+
+        if not token_address or not chain_name:
             continue
 
-        # Get chain config from AAVE_CHAINS or use custom
-        if chain_name.capitalize() in AAVE_CHAINS:
-            chain_config = AAVE_CHAINS[chain_name.capitalize()]
-        else:
-            # Custom chain config from asset config
-            rpc_urls = asset_config.get("rpc_urls", {})
-            chain_config = {
-                "rpc": rpc_urls.get(chain_name.lower()),
-                "pool": chain_data.get("pool_address"),
-                "blockscout": chain_data.get("blockscout_url")
-            }
-
-        if not chain_config.get("rpc") or not chain_config.get("pool"):
+        # Only process each chain once (like streamlit)
+        if chain_name in processed_chains:
             continue
+        processed_chains.add(chain_name)
+
+        # Get chain config from AAVE_CHAINS
+        if chain_name not in AAVE_CHAINS:
+            continue
+
+        chain_config = AAVE_CHAINS[chain_name]
 
         try:
             aave_result = analyze_aave_market(token_address, chain_name, chain_config)
 
             if aave_result.get("status") in ["success", "partial"]:
-                chains_processed += 1
-
                 # Market overview metrics
                 market = aave_result.get("market_overview", {})
                 if market:
@@ -81,21 +97,21 @@ def fetch_aave_metrics(asset_config: Dict[str, Any]) -> Dict[str, Any]:
                         "asset_symbol": symbol,
                         "metric_name": "lending_supply",
                         "value": market.get("total_supply", 0),
-                        "chain": chain_name,
+                        "chain": chain_name.lower(),
                         "metadata": {"protocol": "aave_v3"}
                     })
                     metrics.append({
                         "asset_symbol": symbol,
                         "metric_name": "lending_borrow",
                         "value": market.get("total_borrow", 0),
-                        "chain": chain_name,
+                        "chain": chain_name.lower(),
                         "metadata": {"protocol": "aave_v3"}
                     })
                     metrics.append({
                         "asset_symbol": symbol,
                         "metric_name": "utilization_rate",
                         "value": market.get("utilization_rate", 0),
-                        "chain": chain_name,
+                        "chain": chain_name.lower(),
                         "metadata": {"protocol": "aave_v3"}
                     })
 
@@ -106,7 +122,7 @@ def fetch_aave_metrics(asset_config: Dict[str, Any]) -> Dict[str, Any]:
                         "asset_symbol": symbol,
                         "metric_name": "rlr_pct",
                         "value": rlr_data.get("rlr_supply_based", 0),
-                        "chain": chain_name,
+                        "chain": chain_name.lower(),
                         "metadata": {
                             "protocol": "aave_v3",
                             "loopers_count": rlr_data.get("loopers_count"),
@@ -121,7 +137,7 @@ def fetch_aave_metrics(asset_config: Dict[str, Any]) -> Dict[str, Any]:
                         "asset_symbol": symbol,
                         "metric_name": "clr_pct",
                         "value": clr_data.get("clr_by_value", 0),
-                        "chain": chain_name,
+                        "chain": chain_name.lower(),
                         "metadata": {
                             "protocol": "aave_v3",
                             "clr_by_count": clr_data.get("clr_by_count"),
@@ -138,7 +154,7 @@ def fetch_aave_metrics(asset_config: Dict[str, Any]) -> Dict[str, Any]:
         result["status"] = "success"
         result["metrics"] = metrics
     else:
-        result["error"] = f"No AAVE data retrieved (chains processed: {chains_processed})"
+        result["error"] = f"No AAVE data retrieved (chains: {processed_chains})"
 
     return result
 
@@ -147,8 +163,12 @@ def fetch_compound_metrics(asset_config: Dict[str, Any]) -> Dict[str, Any]:
     """
     Fetch Compound V3 lending metrics for an asset.
 
+    Supports both config formats:
+    - New format: lending_configs (list of {protocol, chain, token_address, ...})
+    - Legacy format: lending_markets.compound (dict)
+
     Args:
-        asset_config: Asset configuration containing lending_markets info
+        asset_config: Asset configuration containing lending configs
 
     Returns:
         Dict with status and fetched metrics
@@ -160,43 +180,56 @@ def fetch_compound_metrics(asset_config: Dict[str, Any]) -> Dict[str, Any]:
     }
 
     symbol = asset_config.get("asset_symbol", "UNKNOWN")
-    lending_markets = asset_config.get("lending_markets", {})
-    compound_config = lending_markets.get("compound", {})
 
-    if not compound_config:
+    # Get Compound configs from new format (lending_configs list)
+    lending_configs = asset_config.get("lending_configs", [])
+    compound_configs = [cfg for cfg in lending_configs if cfg.get("protocol") == "compound"]
+
+    # Fall back to legacy format (lending_markets.compound dict)
+    if not compound_configs:
+        lending_markets = asset_config.get("lending_markets", {})
+        legacy_compound = lending_markets.get("compound", {})
+        if legacy_compound:
+            # Convert legacy format to list format
+            for chain_name, chain_data in legacy_compound.items():
+                token_addr = chain_data.get("collateral_address") or chain_data.get("token_address")
+                if token_addr:
+                    compound_configs.append({
+                        "protocol": "compound",
+                        "chain": chain_name,
+                        "token_address": token_addr
+                    })
+
+    if not compound_configs:
         result["error"] = "No Compound configuration"
         return result
 
     metrics = []
-    chains_processed = 0
+    processed_chains = set()
 
-    # Process each chain
-    for chain_name, chain_data in compound_config.items():
-        collateral_address = chain_data.get("collateral_address") or chain_data.get("token_address")
-        if not collateral_address:
+    # Process each Compound config (same pattern as streamlit)
+    for cfg in compound_configs:
+        chain_name = cfg.get("chain", "").capitalize()
+        token_address = cfg.get("token_address")
+
+        if not token_address or not chain_name:
             continue
 
-        # Get chain config from COMPOUND_MARKETS or use custom
-        if chain_name.capitalize() in COMPOUND_MARKETS:
-            chain_config = COMPOUND_MARKETS[chain_name.capitalize()]
-        else:
-            # Custom chain config from asset config
-            rpc_urls = asset_config.get("rpc_urls", {})
-            chain_config = {
-                "rpc": rpc_urls.get(chain_name.lower()),
-                "markets": chain_data.get("markets", {}),
-                "subgraph": chain_data.get("subgraph_url")
-            }
-
-        if not chain_config.get("rpc"):
+        # Only process each chain once (like streamlit)
+        if chain_name in processed_chains:
             continue
+        processed_chains.add(chain_name)
+
+        # Get chain config from COMPOUND_MARKETS
+        if chain_name not in COMPOUND_MARKETS:
+            continue
+
+        chain_config = COMPOUND_MARKETS[chain_name]
 
         try:
-            compound_result = analyze_compound_market(collateral_address, chain_name, chain_config)
+            compound_result = analyze_compound_market(token_address, chain_name, chain_config)
 
             if compound_result.get("status") == "success":
-                chains_processed += 1
-
                 # Process each market (USDC, USDT, WETH, etc.)
                 for market_data in compound_result.get("markets", []):
                     if not market_data.get("supported"):
@@ -211,7 +244,7 @@ def fetch_compound_metrics(asset_config: Dict[str, Any]) -> Dict[str, Any]:
                             "asset_symbol": symbol,
                             "metric_name": "lending_supply",
                             "value": market_overview.get("total_supply", 0),
-                            "chain": chain_name,
+                            "chain": chain_name.lower(),
                             "metadata": {
                                 "protocol": "compound_v3",
                                 "market": market_name
@@ -221,7 +254,7 @@ def fetch_compound_metrics(asset_config: Dict[str, Any]) -> Dict[str, Any]:
                             "asset_symbol": symbol,
                             "metric_name": "utilization_rate",
                             "value": market_overview.get("utilization", 0),
-                            "chain": chain_name,
+                            "chain": chain_name.lower(),
                             "metadata": {
                                 "protocol": "compound_v3",
                                 "market": market_name
@@ -233,7 +266,7 @@ def fetch_compound_metrics(asset_config: Dict[str, Any]) -> Dict[str, Any]:
                             "asset_symbol": symbol,
                             "metric_name": "collateral_supplied",
                             "value": collateral_info.get("total_supplied", 0),
-                            "chain": chain_name,
+                            "chain": chain_name.lower(),
                             "metadata": {
                                 "protocol": "compound_v3",
                                 "market": market_name,
@@ -248,7 +281,7 @@ def fetch_compound_metrics(asset_config: Dict[str, Any]) -> Dict[str, Any]:
                             "asset_symbol": symbol,
                             "metric_name": "clr_pct",
                             "value": clr_data.get("clr_by_value", 0),
-                            "chain": chain_name,
+                            "chain": chain_name.lower(),
                             "metadata": {
                                 "protocol": "compound_v3",
                                 "market": market_name,
@@ -265,7 +298,7 @@ def fetch_compound_metrics(asset_config: Dict[str, Any]) -> Dict[str, Any]:
         result["status"] = "success"
         result["metrics"] = metrics
     else:
-        result["error"] = f"No Compound data retrieved (chains processed: {chains_processed})"
+        result["error"] = f"No Compound data retrieved (chains: {processed_chains})"
 
     return result
 
@@ -346,20 +379,25 @@ def fetch_and_store_lending_metrics(asset_config: Dict[str, Any]) -> Dict[str, A
 
 
 if __name__ == "__main__":
-    # Test with example config
+    # Test with example config (matches actual config format)
     test_config = {
-        "asset_symbol": "cbBTC",
-        "lending_markets": {
-            "aave": {
-                "ethereum": {
-                    "token_address": "0xcbB7C0000aB88B473b1f5aFd9ef808440eed33Bf"
-                }
+        "asset_symbol": "wstETH",
+        "lending_configs": [
+            {
+                "protocol": "aave",
+                "chain": "ethereum",
+                "token_address": "0x7f39C581F595B53c5cb19bD0b3f8dA6c935E2Ca0"
+            },
+            {
+                "protocol": "compound",
+                "chain": "ethereum",
+                "token_address": "0x7f39C581F595B53c5cb19bD0b3f8dA6c935E2Ca0"
             }
-        }
+        ]
     }
 
     print("Testing lending fetcher...")
-    result = fetch_aave_metrics(test_config)
+    result = fetch_all_lending_metrics(test_config)
     print(f"Status: {result['status']}")
     print(f"Metrics: {len(result.get('metrics', []))}")
     if result.get("error"):

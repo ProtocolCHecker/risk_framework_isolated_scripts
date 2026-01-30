@@ -23,6 +23,10 @@ def fetch_oracle_freshness(asset_config: Dict[str, Any]) -> Dict[str, Any]:
     """
     Fetch oracle freshness metrics from asset config.
 
+    Supports both config formats:
+    - New format: oracle_freshness.price_feeds (list)
+    - Legacy format: oracles (dict)
+
     Args:
         asset_config: Asset configuration containing oracle addresses
 
@@ -36,73 +40,120 @@ def fetch_oracle_freshness(asset_config: Dict[str, Any]) -> Dict[str, Any]:
     }
 
     symbol = asset_config.get("asset_symbol", "UNKNOWN")
-    oracles = asset_config.get("oracles", {})
     rpc_urls = asset_config.get("rpc_urls", {})
 
-    if not oracles:
-        result["error"] = "No oracles configured"
+    # Try new format first: oracle_freshness.price_feeds
+    oracle_freshness_config = asset_config.get("oracle_freshness", {})
+    price_feeds = oracle_freshness_config.get("price_feeds", [])
+
+    # Fall back to legacy format: oracles dict
+    oracles_dict = asset_config.get("oracles", {})
+
+    if not price_feeds and not oracles_dict:
+        result["error"] = "No oracles configured (need oracle_freshness.price_feeds or oracles)"
         return result
 
     metrics = []
 
-    # Process each chain's oracles
-    for chain, oracle_list in oracles.items():
-        if not oracle_list:
-            continue
+    # Process new format: price_feeds list
+    if price_feeds:
+        # Group feeds by chain for batch processing
+        feeds_by_chain = {}
+        for feed in price_feeds:
+            chain = feed.get("chain", "ethereum")
+            if chain not in feeds_by_chain:
+                feeds_by_chain[chain] = []
+            feeds_by_chain[chain].append(feed)
 
-        # Get addresses from oracle config
-        addresses = []
-        for oracle in oracle_list:
-            if isinstance(oracle, dict):
-                addr = oracle.get("address")
-                if addr:
-                    addresses.append(addr)
-            elif isinstance(oracle, str):
-                addresses.append(oracle)
+        for chain, feeds in feeds_by_chain.items():
+            addresses = [f.get("address") for f in feeds if f.get("address")]
+            if not addresses:
+                continue
 
-        if not addresses:
-            continue
+            custom_rpc = rpc_urls.get(chain)
 
-        # Get custom RPC if available
-        custom_rpc = rpc_urls.get(chain)
+            freshness_result = get_oracle_freshness(
+                oracle_addresses=addresses,
+                chain_name=chain,
+                custom_rpc=custom_rpc
+            )
 
-        # Fetch freshness
-        freshness_result = get_oracle_freshness(
-            oracle_addresses=addresses,
-            chain_name=chain,
-            custom_rpc=custom_rpc
-        )
+            if freshness_result.get("status") == "success":
+                oracles_data = freshness_result.get("oracles", [])
+                for i, oracle_data in enumerate(oracles_data):
+                    feed_name = feeds[i].get("name", f"Oracle {i+1}") if i < len(feeds) else f"Oracle {i+1}"
+                    # Correct field name is "minutes_since_update" not "freshness_minutes"
+                    freshness_mins = oracle_data.get("minutes_since_update")
 
-        if freshness_result.get("status") == "success":
-            # Extract metrics from aggregate
-            aggregate = freshness_result.get("aggregate", {})
+                    if freshness_mins is not None:
+                        metrics.append({
+                            "asset_symbol": symbol,
+                            "metric_name": "oracle_freshness_minutes",
+                            "value": freshness_mins,
+                            "chain": chain,
+                            "metadata": {
+                                "feed_name": feed_name,
+                                "address": oracle_data.get("address"),
+                                "price": oracle_data.get("price")
+                            }
+                        })
 
-            if aggregate:
-                metrics.append({
-                    "asset_symbol": symbol,
-                    "metric_name": "oracle_freshness_minutes",
-                    "value": aggregate.get("max_freshness_minutes", 0),
-                    "chain": chain,
-                    "metadata": {
-                        "min_freshness": aggregate.get("min_freshness_minutes"),
-                        "avg_freshness": aggregate.get("avg_freshness_minutes"),
-                        "oracles_checked": aggregate.get("oracles_checked")
-                    }
-                })
+    # Process legacy format: oracles dict
+    elif oracles_dict:
+        for chain, oracle_list in oracles_dict.items():
+            if not oracle_list:
+                continue
 
-            # Store individual oracle data
-            for oracle_data in freshness_result.get("oracles", []):
-                if "error" not in oracle_data:
+            addresses = []
+            for oracle in oracle_list:
+                if isinstance(oracle, dict):
+                    addr = oracle.get("address")
+                    if addr:
+                        addresses.append(addr)
+                elif isinstance(oracle, str):
+                    addresses.append(oracle)
+
+            if not addresses:
+                continue
+
+            custom_rpc = rpc_urls.get(chain)
+
+            freshness_result = get_oracle_freshness(
+                oracle_addresses=addresses,
+                chain_name=chain,
+                custom_rpc=custom_rpc
+            )
+
+            if freshness_result.get("status") == "success":
+                # Extract metrics from aggregate
+                aggregate = freshness_result.get("aggregate", {})
+
+                if aggregate:
                     metrics.append({
                         "asset_symbol": symbol,
-                        "metric_name": "oracle_price",
-                        "value": oracle_data.get("price", 0),
+                        "metric_name": "oracle_freshness_minutes",
+                        "value": aggregate.get("max_freshness_minutes", 0),
                         "chain": chain,
                         "metadata": {
-                            "address": oracle_data.get("address"),
-                            "freshness_minutes": oracle_data.get("minutes_since_update")
+                            "min_freshness": aggregate.get("min_freshness_minutes"),
+                            "avg_freshness": aggregate.get("avg_freshness_minutes"),
+                            "oracles_checked": aggregate.get("oracles_checked")
                         }
                     })
+
+                # Store individual oracle data
+                for oracle_data in freshness_result.get("oracles", []):
+                    if "error" not in oracle_data:
+                        metrics.append({
+                            "asset_symbol": symbol,
+                            "metric_name": "oracle_price",
+                            "value": oracle_data.get("price", 0),
+                            "chain": chain,
+                            "metadata": {
+                                "address": oracle_data.get("address"),
+                                "freshness_minutes": oracle_data.get("minutes_since_update")
+                            }
+                        })
 
     if metrics:
         result["status"] = "success"

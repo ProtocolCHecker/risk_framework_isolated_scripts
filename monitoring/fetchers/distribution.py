@@ -53,6 +53,10 @@ def fetch_distribution_metrics(asset_config: Dict[str, Any]) -> Dict[str, Any]:
     """
     Fetch token distribution metrics for an asset across all chains.
 
+    Supports both config formats:
+    - New format: token_addresses (list of {chain, address})
+    - Legacy format: chains (dict with chain names as keys)
+
     Args:
         asset_config: Asset configuration containing token addresses per chain
 
@@ -66,103 +70,183 @@ def fetch_distribution_metrics(asset_config: Dict[str, Any]) -> Dict[str, Any]:
     }
 
     symbol = asset_config.get("asset_symbol", "UNKNOWN")
-    chains = asset_config.get("chains", {})
+    token_decimals = asset_config.get("token_decimals", 18)
+    blockscout_apis = asset_config.get("blockscout_apis", {})
 
-    if not chains:
-        result["error"] = "No chains configured"
+    # Try new format first: token_addresses list
+    token_addresses = asset_config.get("token_addresses", [])
+
+    # Fall back to legacy format: chains dict
+    chains_dict = asset_config.get("chains", {})
+
+    if not token_addresses and not chains_dict:
+        result["error"] = "No token_addresses or chains configured"
         return result
 
     metrics = []
     total_supply_all_chains = 0
 
-    # Process each chain
-    for chain_name, chain_data in chains.items():
-        token_address = chain_data.get("token_address")
-        if not token_address:
-            continue
+    # Process new format: token_addresses list
+    if token_addresses:
+        for ta in token_addresses:
+            chain_name = ta.get("chain", "ethereum")
+            token_address = ta.get("address")
 
-        decimals = chain_data.get("decimals", 18)
-        blockscout_url = chain_data.get("blockscout_url")
-        use_ankr = chain_data.get("use_ankr", False)
+            if not token_address:
+                continue
 
-        # Force Ankr for certain chains
-        if chain_name.lower() in ["arbitrum", "ethereum"]:
-            use_ankr = True
+            # Skip non-EVM chains like Solana for now
+            if chain_name.lower() == "solana":
+                continue
 
-        try:
-            dist_result = analyze_token(
-                token_address=token_address,
-                chain_name=chain_name,
-                blockscout_url=blockscout_url,
-                use_ankr=use_ankr,
-                decimals=decimals
-            )
+            decimals = ta.get("decimals") or token_decimals
+            blockscout_url = blockscout_apis.get(chain_name)
+            use_ankr = chain_name.lower() in ["arbitrum", "ethereum"]
 
-            if dist_result.get("status") == "success":
-                metrics_data = dist_result.get("metrics", {})
-                top_holders = dist_result.get("top_holders", [])
+            try:
+                dist_result = analyze_token(
+                    token_address=token_address,
+                    chain_name=chain_name,
+                    blockscout_url=blockscout_url,
+                    use_ankr=use_ankr,
+                    decimals=decimals
+                )
 
-                # Extract balances for HHI calculation
-                balances = [h.get("balance", 0) for h in top_holders]
+                if dist_result.get("status") == "success":
+                    metrics_data = dist_result.get("metrics", {})
+                    top_holders = dist_result.get("top_holders", [])
+                    balances = [h.get("balance", 0) for h in top_holders]
 
-                # Total supply
-                total_supply = metrics_data.get("total_supply", 0)
-                total_supply_all_chains += total_supply
+                    total_supply = metrics_data.get("total_supply", 0)
+                    total_supply_all_chains += total_supply
 
-                metrics.append({
-                    "asset_symbol": symbol,
-                    "metric_name": "total_supply",
-                    "value": total_supply,
-                    "chain": chain_name,
-                    "metadata": {
-                        "holders_analyzed": metrics_data.get("holders_analyzed")
-                    }
-                })
+                    metrics.append({
+                        "asset_symbol": symbol,
+                        "metric_name": "total_supply",
+                        "value": total_supply,
+                        "chain": chain_name,
+                        "metadata": {"holders_analyzed": metrics_data.get("holders_analyzed")}
+                    })
 
-                # Gini coefficient
-                gini_coeff = metrics_data.get("gini_coefficient", 0)
-                metrics.append({
-                    "asset_symbol": symbol,
-                    "metric_name": "gini",
-                    "value": gini_coeff,
-                    "chain": chain_name,
-                    "metadata": {
-                        "holders_analyzed": metrics_data.get("holders_analyzed")
-                    }
-                })
+                    gini_coeff = metrics_data.get("gini_coefficient", 0)
+                    metrics.append({
+                        "asset_symbol": symbol,
+                        "metric_name": "gini",
+                        "value": gini_coeff,
+                        "chain": chain_name,
+                        "metadata": {"holders_analyzed": metrics_data.get("holders_analyzed")}
+                    })
 
-                # HHI
-                hhi = calculate_hhi(balances)
-                metrics.append({
-                    "asset_symbol": symbol,
-                    "metric_name": "hhi",
-                    "value": hhi,
-                    "chain": chain_name,
-                    "metadata": {
-                        "holders_analyzed": len(balances)
-                    }
-                })
+                    hhi = calculate_hhi(balances)
+                    metrics.append({
+                        "asset_symbol": symbol,
+                        "metric_name": "hhi",
+                        "value": hhi,
+                        "chain": chain_name,
+                        "metadata": {"holders_analyzed": len(balances)}
+                    })
 
-                # Concentration metrics
-                metrics.append({
-                    "asset_symbol": symbol,
-                    "metric_name": "top_10_concentration_pct",
-                    "value": metrics_data.get("top_10_concentration_pct", 0),
-                    "chain": chain_name,
-                    "metadata": None
-                })
+                    metrics.append({
+                        "asset_symbol": symbol,
+                        "metric_name": "top_10_concentration_pct",
+                        "value": metrics_data.get("top_10_concentration_pct", 0),
+                        "chain": chain_name,
+                        "metadata": None
+                    })
 
-                metrics.append({
-                    "asset_symbol": symbol,
-                    "metric_name": "top_50_concentration_pct",
-                    "value": metrics_data.get("top_50_concentration_pct", 0),
-                    "chain": chain_name,
-                    "metadata": None
-                })
+            except Exception as e:
+                print(f"Distribution fetch error for {chain_name}: {e}")
+                continue
 
-        except Exception as e:
-            print(f"Distribution fetch error for {chain_name}: {e}")
-            continue
+    # Process legacy format: chains dict
+    elif chains_dict:
+        for chain_name, chain_data in chains_dict.items():
+            token_address = chain_data.get("token_address")
+            if not token_address:
+                continue
+
+            decimals = chain_data.get("decimals", 18)
+            blockscout_url = chain_data.get("blockscout_url")
+            use_ankr = chain_data.get("use_ankr", False)
+
+            # Force Ankr for certain chains
+            if chain_name.lower() in ["arbitrum", "ethereum"]:
+                use_ankr = True
+
+            try:
+                dist_result = analyze_token(
+                    token_address=token_address,
+                    chain_name=chain_name,
+                    blockscout_url=blockscout_url,
+                    use_ankr=use_ankr,
+                    decimals=decimals
+                )
+
+                if dist_result.get("status") == "success":
+                    metrics_data = dist_result.get("metrics", {})
+                    top_holders = dist_result.get("top_holders", [])
+
+                    # Extract balances for HHI calculation
+                    balances = [h.get("balance", 0) for h in top_holders]
+
+                    # Total supply
+                    total_supply = metrics_data.get("total_supply", 0)
+                    total_supply_all_chains += total_supply
+
+                    metrics.append({
+                        "asset_symbol": symbol,
+                        "metric_name": "total_supply",
+                        "value": total_supply,
+                        "chain": chain_name,
+                        "metadata": {
+                            "holders_analyzed": metrics_data.get("holders_analyzed")
+                        }
+                    })
+
+                    # Gini coefficient
+                    gini_coeff = metrics_data.get("gini_coefficient", 0)
+                    metrics.append({
+                        "asset_symbol": symbol,
+                        "metric_name": "gini",
+                        "value": gini_coeff,
+                        "chain": chain_name,
+                        "metadata": {
+                            "holders_analyzed": metrics_data.get("holders_analyzed")
+                        }
+                    })
+
+                    # HHI
+                    hhi = calculate_hhi(balances)
+                    metrics.append({
+                        "asset_symbol": symbol,
+                        "metric_name": "hhi",
+                        "value": hhi,
+                        "chain": chain_name,
+                        "metadata": {
+                            "holders_analyzed": len(balances)
+                        }
+                    })
+
+                    # Concentration metrics
+                    metrics.append({
+                        "asset_symbol": symbol,
+                        "metric_name": "top_10_concentration_pct",
+                        "value": metrics_data.get("top_10_concentration_pct", 0),
+                        "chain": chain_name,
+                        "metadata": None
+                    })
+
+                    metrics.append({
+                        "asset_symbol": symbol,
+                        "metric_name": "top_50_concentration_pct",
+                        "value": metrics_data.get("top_50_concentration_pct", 0),
+                        "chain": chain_name,
+                        "metadata": None
+                    })
+
+            except Exception as e:
+                print(f"Distribution fetch error for {chain_name}: {e}")
+                continue
 
     # Add aggregate total supply
     if total_supply_all_chains > 0:
