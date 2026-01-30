@@ -1,0 +1,1087 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Risk Monitoring System - Visual Documentation</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+            background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+            color: #e2e8f0;
+            min-height: 100vh;
+            line-height: 1.6;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 40px 20px;
+        }
+
+        header {
+            text-align: center;
+            margin-bottom: 60px;
+            padding: 40px;
+            background: rgba(30, 41, 59, 0.8);
+            border-radius: 20px;
+            border: 1px solid rgba(99, 102, 241, 0.3);
+        }
+
+        h1 {
+            font-size: 2.5rem;
+            background: linear-gradient(135deg, #818cf8, #c084fc);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: 15px;
+        }
+
+        .subtitle {
+            color: #94a3b8;
+            font-size: 1.1rem;
+        }
+
+        .badge-row {
+            display: flex;
+            justify-content: center;
+            gap: 15px;
+            margin-top: 25px;
+            flex-wrap: wrap;
+        }
+
+        .badge {
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-size: 0.85rem;
+            font-weight: 600;
+        }
+
+        .badge-success { background: rgba(34, 197, 94, 0.2); color: #4ade80; border: 1px solid rgba(34, 197, 94, 0.3); }
+        .badge-warning { background: rgba(234, 179, 8, 0.2); color: #fbbf24; border: 1px solid rgba(234, 179, 8, 0.3); }
+        .badge-info { background: rgba(99, 102, 241, 0.2); color: #818cf8; border: 1px solid rgba(99, 102, 241, 0.3); }
+
+        section {
+            margin-bottom: 50px;
+        }
+
+        h2 {
+            font-size: 1.8rem;
+            color: #f1f5f9;
+            margin-bottom: 25px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid rgba(99, 102, 241, 0.3);
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        h2::before {
+            content: '';
+            width: 6px;
+            height: 28px;
+            background: linear-gradient(180deg, #818cf8, #c084fc);
+            border-radius: 3px;
+        }
+
+        .card {
+            background: rgba(30, 41, 59, 0.6);
+            border-radius: 16px;
+            padding: 30px;
+            border: 1px solid rgba(99, 102, 241, 0.2);
+            margin-bottom: 25px;
+        }
+
+        .architecture-svg {
+            width: 100%;
+            max-width: 1200px;
+            margin: 0 auto;
+            display: block;
+        }
+
+        .grid-2 {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+            gap: 25px;
+        }
+
+        .grid-3 {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+        }
+
+        .metric-card {
+            background: rgba(15, 23, 42, 0.6);
+            border-radius: 12px;
+            padding: 20px;
+            border-left: 4px solid;
+        }
+
+        .metric-card.critical { border-left-color: #ef4444; }
+        .metric-card.high { border-left-color: #f97316; }
+        .metric-card.medium { border-left-color: #eab308; }
+        .metric-card.daily { border-left-color: #22c55e; }
+
+        .metric-card h4 {
+            color: #f1f5f9;
+            margin-bottom: 10px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .metric-card .schedule {
+            font-size: 0.85rem;
+            color: #94a3b8;
+            margin-bottom: 12px;
+        }
+
+        .metric-list {
+            list-style: none;
+        }
+
+        .metric-list li {
+            padding: 6px 0;
+            color: #cbd5e1;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .metric-list li::before {
+            content: '→';
+            color: #818cf8;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 15px;
+        }
+
+        th, td {
+            padding: 14px 16px;
+            text-align: left;
+            border-bottom: 1px solid rgba(99, 102, 241, 0.15);
+        }
+
+        th {
+            background: rgba(99, 102, 241, 0.1);
+            color: #818cf8;
+            font-weight: 600;
+            font-size: 0.9rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        tr:hover {
+            background: rgba(99, 102, 241, 0.05);
+        }
+
+        .status-icon {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .status-icon.success::before { content: '✓'; color: #4ade80; }
+        .status-icon.warning::before { content: '⚠'; color: #fbbf24; }
+        .status-icon.pending::before { content: '○'; color: #94a3b8; }
+
+        .flow-diagram {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 15px;
+            flex-wrap: wrap;
+            padding: 30px;
+        }
+
+        .flow-box {
+            background: linear-gradient(135deg, rgba(99, 102, 241, 0.2), rgba(139, 92, 246, 0.2));
+            border: 1px solid rgba(99, 102, 241, 0.4);
+            border-radius: 12px;
+            padding: 20px 25px;
+            text-align: center;
+            min-width: 140px;
+        }
+
+        .flow-box.primary {
+            background: linear-gradient(135deg, rgba(99, 102, 241, 0.4), rgba(139, 92, 246, 0.4));
+        }
+
+        .flow-arrow {
+            color: #818cf8;
+            font-size: 1.5rem;
+        }
+
+        .db-schema {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .db-table {
+            background: rgba(15, 23, 42, 0.8);
+            border-radius: 12px;
+            overflow: hidden;
+            border: 1px solid rgba(99, 102, 241, 0.3);
+        }
+
+        .db-table-header {
+            background: linear-gradient(135deg, rgba(99, 102, 241, 0.3), rgba(139, 92, 246, 0.3));
+            padding: 15px 20px;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .db-table-header::before {
+            content: '⊞';
+            font-size: 1.2rem;
+        }
+
+        .db-columns {
+            padding: 15px 20px;
+        }
+
+        .db-column {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 8px 0;
+            border-bottom: 1px solid rgba(99, 102, 241, 0.1);
+        }
+
+        .db-column:last-child {
+            border-bottom: none;
+        }
+
+        .col-name {
+            font-family: 'Consolas', 'Monaco', monospace;
+            color: #c084fc;
+            min-width: 180px;
+        }
+
+        .col-type {
+            font-family: 'Consolas', 'Monaco', monospace;
+            color: #94a3b8;
+            font-size: 0.85rem;
+        }
+
+        .col-key {
+            background: rgba(234, 179, 8, 0.2);
+            color: #fbbf24;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 0.75rem;
+        }
+
+        .checklist {
+            list-style: none;
+        }
+
+        .checklist li {
+            padding: 12px 0;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            border-bottom: 1px solid rgba(99, 102, 241, 0.1);
+        }
+
+        .checklist li::before {
+            content: '☐';
+            font-size: 1.2rem;
+            color: #818cf8;
+        }
+
+        .env-var {
+            font-family: 'Consolas', 'Monaco', monospace;
+            background: rgba(99, 102, 241, 0.1);
+            padding: 2px 8px;
+            border-radius: 4px;
+            color: #c084fc;
+        }
+
+        code {
+            font-family: 'Consolas', 'Monaco', monospace;
+            background: rgba(0, 0, 0, 0.3);
+            padding: 3px 8px;
+            border-radius: 4px;
+            font-size: 0.9rem;
+        }
+
+        .file-tree {
+            font-family: 'Consolas', 'Monaco', monospace;
+            background: rgba(0, 0, 0, 0.3);
+            padding: 25px;
+            border-radius: 12px;
+            font-size: 0.9rem;
+            line-height: 1.8;
+        }
+
+        .file-tree .folder { color: #fbbf24; }
+        .file-tree .file { color: #94a3b8; }
+        .file-tree .comment { color: #64748b; font-style: italic; }
+
+        .legend {
+            display: flex;
+            gap: 25px;
+            padding: 20px;
+            background: rgba(15, 23, 42, 0.5);
+            border-radius: 12px;
+            margin-top: 20px;
+            flex-wrap: wrap;
+        }
+
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .legend-color {
+            width: 16px;
+            height: 16px;
+            border-radius: 4px;
+        }
+
+        footer {
+            text-align: center;
+            padding: 40px;
+            color: #64748b;
+            border-top: 1px solid rgba(99, 102, 241, 0.2);
+            margin-top: 60px;
+        }
+
+        @media (max-width: 768px) {
+            .grid-2, .grid-3 {
+                grid-template-columns: 1fr;
+            }
+
+            h1 {
+                font-size: 1.8rem;
+            }
+
+            .flow-diagram {
+                flex-direction: column;
+            }
+
+            .flow-arrow {
+                transform: rotate(90deg);
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Risk Monitoring System</h1>
+            <p class="subtitle">DeFi Asset Risk Metrics Monitoring & Alert System</p>
+            <div class="badge-row">
+                <span class="badge badge-info">22 Metrics</span>
+                <span class="badge badge-info">6 Categories</span>
+                <span class="badge badge-success">5 Assets Tested</span>
+                <span class="badge badge-warning">PostgreSQL + Telegram</span>
+            </div>
+        </header>
+
+        <!-- System Overview -->
+        <section>
+            <h2>System Overview</h2>
+            <div class="card">
+                <svg class="architecture-svg" viewBox="0 0 1000 600" xmlns="http://www.w3.org/2000/svg">
+                    <!-- Background -->
+                    <defs>
+                        <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                            <stop offset="0%" style="stop-color:#1e293b;stop-opacity:1" />
+                            <stop offset="100%" style="stop-color:#0f172a;stop-opacity:1" />
+                        </linearGradient>
+                        <linearGradient id="purpleGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                            <stop offset="0%" style="stop-color:#818cf8;stop-opacity:1" />
+                            <stop offset="100%" style="stop-color:#c084fc;stop-opacity:1" />
+                        </linearGradient>
+                        <linearGradient id="greenGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                            <stop offset="0%" style="stop-color:#22c55e;stop-opacity:1" />
+                            <stop offset="100%" style="stop-color:#4ade80;stop-opacity:1" />
+                        </linearGradient>
+                        <linearGradient id="orangeGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                            <stop offset="0%" style="stop-color:#f97316;stop-opacity:1" />
+                            <stop offset="100%" style="stop-color:#fbbf24;stop-opacity:1" />
+                        </linearGradient>
+                        <linearGradient id="redGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                            <stop offset="0%" style="stop-color:#ef4444;stop-opacity:1" />
+                            <stop offset="100%" style="stop-color:#f87171;stop-opacity:1" />
+                        </linearGradient>
+                        <filter id="glow">
+                            <feGaussianBlur stdDeviation="3" result="coloredBlur"/>
+                            <feMerge>
+                                <feMergeNode in="coloredBlur"/>
+                                <feMergeNode in="SourceGraphic"/>
+                            </feMerge>
+                        </filter>
+                    </defs>
+
+                    <!-- CloudWatch Section -->
+                    <rect x="50" y="20" width="900" height="80" rx="10" fill="rgba(99,102,241,0.1)" stroke="#818cf8" stroke-width="2"/>
+                    <text x="500" y="45" text-anchor="middle" fill="#818cf8" font-size="14" font-weight="bold">CloudWatch Events (Schedules)</text>
+
+                    <!-- Schedule boxes -->
+                    <g transform="translate(100, 55)">
+                        <rect width="100" height="35" rx="6" fill="url(#redGrad)" filter="url(#glow)"/>
+                        <text x="50" y="22" text-anchor="middle" fill="white" font-size="12" font-weight="600">5 min</text>
+                    </g>
+                    <g transform="translate(230, 55)">
+                        <rect width="100" height="35" rx="6" fill="url(#orangeGrad)" filter="url(#glow)"/>
+                        <text x="50" y="22" text-anchor="middle" fill="white" font-size="12" font-weight="600">30 min</text>
+                    </g>
+                    <g transform="translate(360, 55)">
+                        <rect width="100" height="35" rx="6" fill="rgba(234,179,8,0.8)" filter="url(#glow)"/>
+                        <text x="50" y="22" text-anchor="middle" fill="white" font-size="12" font-weight="600">6 hours</text>
+                    </g>
+                    <g transform="translate(490, 55)">
+                        <rect width="100" height="35" rx="6" fill="url(#greenGrad)" filter="url(#glow)"/>
+                        <text x="50" y="22" text-anchor="middle" fill="white" font-size="12" font-weight="600">24 hours</text>
+                    </g>
+                    <g transform="translate(750, 55)">
+                        <rect width="100" height="35" rx="6" fill="url(#purpleGrad)" filter="url(#glow)"/>
+                        <text x="50" y="22" text-anchor="middle" fill="white" font-size="12" font-weight="600">5 min</text>
+                    </g>
+
+                    <!-- Arrows from schedules -->
+                    <path d="M150 100 L150 140" stroke="#818cf8" stroke-width="2" marker-end="url(#arrowhead)"/>
+                    <path d="M280 100 L280 140" stroke="#818cf8" stroke-width="2"/>
+                    <path d="M410 100 L410 140" stroke="#818cf8" stroke-width="2"/>
+                    <path d="M540 100 L540 140" stroke="#818cf8" stroke-width="2"/>
+                    <path d="M800 100 L800 140" stroke="#818cf8" stroke-width="2"/>
+
+                    <!-- Lambda Functions Section -->
+                    <rect x="50" y="140" width="900" height="100" rx="10" fill="rgba(139,92,246,0.1)" stroke="#a78bfa" stroke-width="2"/>
+                    <text x="500" y="165" text-anchor="middle" fill="#a78bfa" font-size="14" font-weight="bold">Lambda Functions</text>
+
+                    <!-- Lambda boxes -->
+                    <g transform="translate(80, 180)">
+                        <rect width="120" height="45" rx="6" fill="rgba(239,68,68,0.3)" stroke="#ef4444"/>
+                        <text x="60" y="18" text-anchor="middle" fill="#f87171" font-size="11" font-weight="600">CRITICAL</text>
+                        <text x="60" y="35" text-anchor="middle" fill="#94a3b8" font-size="10">180s / 512MB</text>
+                    </g>
+                    <g transform="translate(220, 180)">
+                        <rect width="120" height="45" rx="6" fill="rgba(249,115,22,0.3)" stroke="#f97316"/>
+                        <text x="60" y="18" text-anchor="middle" fill="#fb923c" font-size="11" font-weight="600">HIGH</text>
+                        <text x="60" y="35" text-anchor="middle" fill="#94a3b8" font-size="10">300s / 1024MB</text>
+                    </g>
+                    <g transform="translate(360, 180)">
+                        <rect width="120" height="45" rx="6" fill="rgba(234,179,8,0.3)" stroke="#eab308"/>
+                        <text x="60" y="18" text-anchor="middle" fill="#fbbf24" font-size="11" font-weight="600">MEDIUM</text>
+                        <text x="60" y="35" text-anchor="middle" fill="#94a3b8" font-size="10">600s / 1024MB</text>
+                    </g>
+                    <g transform="translate(500, 180)">
+                        <rect width="120" height="45" rx="6" fill="rgba(34,197,94,0.3)" stroke="#22c55e"/>
+                        <text x="60" y="18" text-anchor="middle" fill="#4ade80" font-size="11" font-weight="600">DAILY</text>
+                        <text x="60" y="35" text-anchor="middle" fill="#94a3b8" font-size="10">600s / 512MB</text>
+                    </g>
+                    <g transform="translate(730, 180)">
+                        <rect width="140" height="45" rx="6" fill="rgba(139,92,246,0.3)" stroke="#a78bfa"/>
+                        <text x="70" y="18" text-anchor="middle" fill="#c084fc" font-size="11" font-weight="600">NOTIFICATION</text>
+                        <text x="70" y="35" text-anchor="middle" fill="#94a3b8" font-size="10">60s / 256MB</text>
+                    </g>
+
+                    <!-- Arrows to Fetchers -->
+                    <path d="M350 245 L350 290" stroke="#818cf8" stroke-width="2"/>
+
+                    <!-- Fetchers Section -->
+                    <rect x="50" y="290" width="600" height="100" rx="10" fill="rgba(34,197,94,0.1)" stroke="#22c55e" stroke-width="2"/>
+                    <text x="350" y="315" text-anchor="middle" fill="#22c55e" font-size="14" font-weight="bold">Fetchers (Data Collection)</text>
+
+                    <!-- Fetcher boxes -->
+                    <g transform="translate(70, 330)">
+                        <rect width="85" height="45" rx="6" fill="rgba(34,197,94,0.2)" stroke="#4ade80"/>
+                        <text x="42" y="28" text-anchor="middle" fill="#4ade80" font-size="11">Oracle</text>
+                    </g>
+                    <g transform="translate(165, 330)">
+                        <rect width="85" height="45" rx="6" fill="rgba(34,197,94,0.2)" stroke="#4ade80"/>
+                        <text x="42" y="28" text-anchor="middle" fill="#4ade80" font-size="11">Reserve</text>
+                    </g>
+                    <g transform="translate(260, 330)">
+                        <rect width="85" height="45" rx="6" fill="rgba(34,197,94,0.2)" stroke="#4ade80"/>
+                        <text x="42" y="28" text-anchor="middle" fill="#4ade80" font-size="11">Liquidity</text>
+                    </g>
+                    <g transform="translate(355, 330)">
+                        <rect width="85" height="45" rx="6" fill="rgba(34,197,94,0.2)" stroke="#4ade80"/>
+                        <text x="42" y="28" text-anchor="middle" fill="#4ade80" font-size="11">Lending</text>
+                    </g>
+                    <g transform="translate(450, 330)">
+                        <rect width="85" height="45" rx="6" fill="rgba(34,197,94,0.2)" stroke="#4ade80"/>
+                        <text x="42" y="28" text-anchor="middle" fill="#4ade80" font-size="11">Distribution</text>
+                    </g>
+                    <g transform="translate(545, 330)">
+                        <rect width="85" height="45" rx="6" fill="rgba(34,197,94,0.2)" stroke="#4ade80"/>
+                        <text x="42" y="28" text-anchor="middle" fill="#4ade80" font-size="11">Market</text>
+                    </g>
+
+                    <!-- Arrow to Database -->
+                    <path d="M350 400 L350 440" stroke="#818cf8" stroke-width="2"/>
+
+                    <!-- Database Section -->
+                    <rect x="50" y="440" width="600" height="130" rx="10" fill="rgba(99,102,241,0.1)" stroke="#818cf8" stroke-width="2"/>
+                    <text x="350" y="465" text-anchor="middle" fill="#818cf8" font-size="14" font-weight="bold">PostgreSQL (morpho schema)</text>
+
+                    <!-- DB Table boxes -->
+                    <g transform="translate(70, 480)">
+                        <rect width="120" height="70" rx="6" fill="rgba(99,102,241,0.2)" stroke="#818cf8"/>
+                        <text x="60" y="25" text-anchor="middle" fill="#c084fc" font-size="10" font-weight="600">rm_metrics_history</text>
+                        <text x="60" y="45" text-anchor="middle" fill="#94a3b8" font-size="9">Time series data</text>
+                        <text x="60" y="60" text-anchor="middle" fill="#64748b" font-size="9">All collected metrics</text>
+                    </g>
+                    <g transform="translate(200, 480)">
+                        <rect width="120" height="70" rx="6" fill="rgba(99,102,241,0.2)" stroke="#818cf8"/>
+                        <text x="60" y="25" text-anchor="middle" fill="#c084fc" font-size="10" font-weight="600">rm_alerts_log</text>
+                        <text x="60" y="45" text-anchor="middle" fill="#94a3b8" font-size="9">Alert history</text>
+                        <text x="60" y="60" text-anchor="middle" fill="#64748b" font-size="9">Triggered alerts</text>
+                    </g>
+                    <g transform="translate(330, 480)">
+                        <rect width="130" height="70" rx="6" fill="rgba(99,102,241,0.2)" stroke="#818cf8"/>
+                        <text x="65" y="25" text-anchor="middle" fill="#c084fc" font-size="10" font-weight="600">rm_alert_thresholds</text>
+                        <text x="65" y="45" text-anchor="middle" fill="#94a3b8" font-size="9">40 thresholds</text>
+                        <text x="65" y="60" text-anchor="middle" fill="#64748b" font-size="9">Configurable limits</text>
+                    </g>
+                    <g transform="translate(470, 480)">
+                        <rect width="120" height="70" rx="6" fill="rgba(99,102,241,0.2)" stroke="#818cf8"/>
+                        <text x="60" y="25" text-anchor="middle" fill="#c084fc" font-size="10" font-weight="600">rm_asset_registry</text>
+                        <text x="60" y="45" text-anchor="middle" fill="#94a3b8" font-size="9">5 assets</text>
+                        <text x="60" y="60" text-anchor="middle" fill="#64748b" font-size="9">Asset configs</text>
+                    </g>
+
+                    <!-- Notification path - connects to top of Telegram box -->
+                    <path d="M800 225 L800 440" stroke="#a78bfa" stroke-width="2" stroke-dasharray="5,5" fill="none"/>
+                    <!-- Arrow pointing down -->
+                    <polygon points="800,440 795,430 805,430" fill="#a78bfa"/>
+
+                    <!-- Telegram Section -->
+                    <rect x="700" y="440" width="250" height="130" rx="10" fill="rgba(34,211,238,0.1)" stroke="#22d3ee" stroke-width="2"/>
+                    <text x="825" y="475" text-anchor="middle" fill="#22d3ee" font-size="14" font-weight="bold">Telegram API</text>
+                    <text x="825" y="505" text-anchor="middle" fill="#94a3b8" font-size="12">Alert Notifications</text>
+
+                    <!-- Telegram icon -->
+                    <circle cx="825" cy="535" r="20" fill="rgba(34,211,238,0.3)" stroke="#22d3ee"/>
+                    <text x="825" y="541" text-anchor="middle" fill="#22d3ee" font-size="16">✈</text>
+                </svg>
+
+                <div class="legend">
+                    <div class="legend-item">
+                        <div class="legend-color" style="background: #ef4444;"></div>
+                        <span>Critical (5 min)</span>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-color" style="background: #f97316;"></div>
+                        <span>High (30 min)</span>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-color" style="background: #eab308;"></div>
+                        <span>Medium (6 hours)</span>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-color" style="background: #22c55e;"></div>
+                        <span>Daily (24 hours)</span>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-color" style="background: #a78bfa;"></div>
+                        <span>Notifications</span>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Metrics by Frequency -->
+        <section>
+            <h2>Metrics by Monitoring Frequency</h2>
+            <div class="grid-2">
+                <div class="metric-card critical">
+                    <h4><span style="color:#ef4444;">●</span> Critical Priority</h4>
+                    <div class="schedule">Every 5 minutes | Timeout: 180s | Memory: 512MB</div>
+                    <ul class="metric-list">
+                        <li>Proof of Reserve (PoR) ratio</li>
+                        <li>Oracle price freshness</li>
+                        <li>Peg deviation from target</li>
+                    </ul>
+                </div>
+
+                <div class="metric-card high">
+                    <h4><span style="color:#f97316;">●</span> High Priority</h4>
+                    <div class="schedule">Every 30 minutes | Timeout: 300s | Memory: 1024MB</div>
+                    <ul class="metric-list">
+                        <li>Pool Total Value Locked (TVL)</li>
+                        <li>Utilization rate</li>
+                        <li>Slippage metrics</li>
+                    </ul>
+                </div>
+
+                <div class="metric-card medium">
+                    <h4><span style="color:#eab308;">●</span> Medium Priority</h4>
+                    <div class="schedule">Every 6 hours | Timeout: 600s | Memory: 1024MB</div>
+                    <ul class="metric-list">
+                        <li>HHI (Herfindahl-Hirschman Index)</li>
+                        <li>Gini coefficient</li>
+                        <li>Collateral Liquidity Ratio (CLR)</li>
+                        <li>Reserve Liquidity Ratio (RLR)</li>
+                        <li>Total supply metrics</li>
+                    </ul>
+                </div>
+
+                <div class="metric-card daily">
+                    <h4><span style="color:#22c55e;">●</span> Daily Priority</h4>
+                    <div class="schedule">Every 24 hours | Timeout: 600s | Memory: 512MB</div>
+                    <ul class="metric-list">
+                        <li>Price volatility</li>
+                        <li>Value at Risk (VaR)</li>
+                        <li>Conditional VaR (CVaR)</li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+
+        <!-- Verification Status -->
+        <section>
+            <h2>Component Verification Status</h2>
+            <div class="card">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Component</th>
+                            <th>Status</th>
+                            <th>Details</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>Fetchers (6 modules)</td>
+                            <td><span class="status-icon success">Tested</span></td>
+                            <td>oracle, reserve, liquidity, lending, distribution, market</td>
+                        </tr>
+                        <tr>
+                            <td>Database</td>
+                            <td><span class="status-icon success">Tested</span></td>
+                            <td>Connection, inserts, queries all working</td>
+                        </tr>
+                        <tr>
+                            <td>Alerts</td>
+                            <td><span class="status-icon success">Tested</span></td>
+                            <td>Threshold checking and logging verified</td>
+                        </tr>
+                        <tr>
+                            <td>Dispatcher</td>
+                            <td><span class="status-icon success">Tested</span></td>
+                            <td>All 4 frequencies collecting metrics</td>
+                        </tr>
+                        <tr>
+                            <td>Registry</td>
+                            <td><span class="status-icon success">Tested</span></td>
+                            <td>5 assets registered and retrieved</td>
+                        </tr>
+                        <tr>
+                            <td>Telegram</td>
+                            <td><span class="status-icon success">Tested</span></td>
+                            <td>Alerts sent successfully</td>
+                        </tr>
+                        <tr>
+                            <td>Handlers</td>
+                            <td><span class="status-icon warning">Partial</span></td>
+                            <td>Logic tested, Lambda deploy pending</td>
+                        </tr>
+                        <tr>
+                            <td>Slack</td>
+                            <td><span class="status-icon pending">Skipped</span></td>
+                            <td>No admin access</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- Supported Assets -->
+        <section>
+            <h2>Monitored Assets & Reserve Types</h2>
+            <div class="card">
+                <div class="grid-3">
+                    <div style="background: rgba(99,102,241,0.1); padding: 20px; border-radius: 12px; text-align: center;">
+                        <div style="font-size: 2rem; margin-bottom: 10px;">₿</div>
+                        <div style="font-weight: 600; color: #f1f5f9;">WBTC</div>
+                        <div style="font-size: 0.85rem; color: #94a3b8;">Chainlink PoR</div>
+                    </div>
+                    <div style="background: rgba(99,102,241,0.1); padding: 20px; border-radius: 12px; text-align: center;">
+                        <div style="font-size: 2rem; margin-bottom: 10px;">◆</div>
+                        <div style="font-weight: 600; color: #f1f5f9;">wstETH</div>
+                        <div style="font-size: 0.85rem; color: #94a3b8;">Liquid Staking</div>
+                    </div>
+                    <div style="background: rgba(99,102,241,0.1); padding: 20px; border-radius: 12px; text-align: center;">
+                        <div style="font-size: 2rem; margin-bottom: 10px;">₿</div>
+                        <div style="font-weight: 600; color: #f1f5f9;">cbBTC</div>
+                        <div style="font-size: 0.85rem; color: #94a3b8;">Chainlink PoR</div>
+                    </div>
+                    <div style="background: rgba(99,102,241,0.1); padding: 20px; border-radius: 12px; text-align: center;">
+                        <div style="font-size: 2rem; margin-bottom: 10px;">◎</div>
+                        <div style="font-weight: 600; color: #f1f5f9;">RLP</div>
+                        <div style="font-size: 0.85rem; color: #94a3b8;">Apostro Scraper</div>
+                    </div>
+                    <div style="background: rgba(99,102,241,0.1); padding: 20px; border-radius: 12px; text-align: center;">
+                        <div style="font-size: 2rem; margin-bottom: 10px;">$</div>
+                        <div style="font-weight: 600; color: #f1f5f9;">cUSD</div>
+                        <div style="font-size: 0.85rem; color: #94a3b8;">Fractional Reserve</div>
+                    </div>
+                </div>
+
+                <h3 style="margin-top: 30px; margin-bottom: 15px; color: #f1f5f9;">Reserve Verification Types</h3>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Type</th>
+                            <th>Description</th>
+                            <th>Example Assets</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><code>chainlink_por</code></td>
+                            <td>Chainlink Proof of Reserve feeds</td>
+                            <td>WBTC, cbBTC</td>
+                        </tr>
+                        <tr>
+                            <td><code>liquid_staking</code></td>
+                            <td>LST backing ratio verification</td>
+                            <td>wstETH, rETH</td>
+                        </tr>
+                        <tr>
+                            <td><code>fractional</code></td>
+                            <td>Fractional reserve checking</td>
+                            <td>cUSD</td>
+                        </tr>
+                        <tr>
+                            <td><code>nav_based</code></td>
+                            <td>NAV oracle-based verification</td>
+                            <td>-</td>
+                        </tr>
+                        <tr>
+                            <td><code>apostro_scraper</code></td>
+                            <td>Resolv dashboard + NAV oracle</td>
+                            <td>RLP</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- Database Schema -->
+        <section>
+            <h2>Database Schema Overview</h2>
+            <div class="card">
+                <p style="margin-bottom: 20px; color: #94a3b8;">All tables use the <code>morpho</code> schema with <code>rm_</code> prefix</p>
+
+                <div class="db-schema">
+                    <div class="db-table">
+                        <div class="db-table-header">rm_metrics_history</div>
+                        <div class="db-columns">
+                            <div class="db-column">
+                                <span class="col-key">PK</span>
+                                <span class="col-name">id</span>
+                                <span class="col-type">SERIAL</span>
+                            </div>
+                            <div class="db-column">
+                                <span class="col-name">asset_symbol</span>
+                                <span class="col-type">VARCHAR(20) NOT NULL</span>
+                            </div>
+                            <div class="db-column">
+                                <span class="col-name">metric_name</span>
+                                <span class="col-type">VARCHAR(50) NOT NULL</span>
+                            </div>
+                            <div class="db-column">
+                                <span class="col-name">value</span>
+                                <span class="col-type">NUMERIC NOT NULL</span>
+                            </div>
+                            <div class="db-column">
+                                <span class="col-name">chain</span>
+                                <span class="col-type">VARCHAR(20)</span>
+                            </div>
+                            <div class="db-column">
+                                <span class="col-name">metadata</span>
+                                <span class="col-type">JSONB</span>
+                            </div>
+                            <div class="db-column">
+                                <span class="col-name">recorded_at</span>
+                                <span class="col-type">TIMESTAMP DEFAULT NOW()</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="db-table">
+                        <div class="db-table-header">rm_alerts_log</div>
+                        <div class="db-columns">
+                            <div class="db-column">
+                                <span class="col-key">PK</span>
+                                <span class="col-name">id</span>
+                                <span class="col-type">SERIAL</span>
+                            </div>
+                            <div class="db-column">
+                                <span class="col-name">asset_symbol</span>
+                                <span class="col-type">VARCHAR(20) NOT NULL</span>
+                            </div>
+                            <div class="db-column">
+                                <span class="col-name">severity</span>
+                                <span class="col-type">VARCHAR(20) NOT NULL</span>
+                            </div>
+                            <div class="db-column">
+                                <span class="col-name">threshold_value</span>
+                                <span class="col-type">NUMERIC NOT NULL</span>
+                            </div>
+                            <div class="db-column">
+                                <span class="col-name">notified</span>
+                                <span class="col-type">BOOLEAN DEFAULT FALSE</span>
+                            </div>
+                            <div class="db-column">
+                                <span class="col-name">triggered_at</span>
+                                <span class="col-type">TIMESTAMP DEFAULT NOW()</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="db-table">
+                        <div class="db-table-header">rm_alert_thresholds <span style="margin-left: 10px; font-weight: normal; font-size: 0.85rem; color: #94a3b8;">(40 pre-populated)</span></div>
+                        <div class="db-columns">
+                            <div class="db-column">
+                                <span class="col-key">PK</span>
+                                <span class="col-name">id</span>
+                                <span class="col-type">SERIAL</span>
+                            </div>
+                            <div class="db-column">
+                                <span class="col-name">asset_symbol</span>
+                                <span class="col-type">VARCHAR(20) - NULL = global</span>
+                            </div>
+                            <div class="db-column">
+                                <span class="col-name">metric_name</span>
+                                <span class="col-type">VARCHAR(50) NOT NULL</span>
+                            </div>
+                            <div class="db-column">
+                                <span class="col-name">operator</span>
+                                <span class="col-type">VARCHAR(5) - &lt;, &gt;, &lt;=, &gt;=</span>
+                            </div>
+                            <div class="db-column">
+                                <span class="col-name">threshold_value</span>
+                                <span class="col-type">NUMERIC NOT NULL</span>
+                            </div>
+                            <div class="db-column">
+                                <span class="col-name">severity</span>
+                                <span class="col-type">critical | warning | info</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div style="margin-top: 25px; display: flex; gap: 20px; flex-wrap: wrap;">
+                    <div style="background: rgba(239,68,68,0.1); padding: 15px 20px; border-radius: 8px; border-left: 3px solid #ef4444;">
+                        <div style="font-weight: 600; color: #f87171;">14 Critical</div>
+                        <div style="font-size: 0.85rem; color: #94a3b8;">thresholds</div>
+                    </div>
+                    <div style="background: rgba(234,179,8,0.1); padding: 15px 20px; border-radius: 8px; border-left: 3px solid #eab308;">
+                        <div style="font-weight: 600; color: #fbbf24;">15 Warning</div>
+                        <div style="font-size: 0.85rem; color: #94a3b8;">thresholds</div>
+                    </div>
+                    <div style="background: rgba(99,102,241,0.1); padding: 15px 20px; border-radius: 8px; border-left: 3px solid #818cf8;">
+                        <div style="font-weight: 600; color: #818cf8;">11 Info</div>
+                        <div style="font-size: 0.85rem; color: #94a3b8;">thresholds</div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Environment Variables -->
+        <section>
+            <h2>Environment Configuration</h2>
+            <div class="card">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Variable</th>
+                            <th>Description</th>
+                            <th>Example</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><span class="env-var">DB_HOST</span></td>
+                            <td>RDS PostgreSQL endpoint</td>
+                            <td><code>avantgarde.xxx.eu-west-1.rds.amazonaws.com</code></td>
+                        </tr>
+                        <tr>
+                            <td><span class="env-var">DB_NAME</span></td>
+                            <td>Database name</td>
+                            <td><code>avantgarde</code></td>
+                        </tr>
+                        <tr>
+                            <td><span class="env-var">DB_USER</span></td>
+                            <td>Database username</td>
+                            <td><code>florian</code></td>
+                        </tr>
+                        <tr>
+                            <td><span class="env-var">DB_PASSWORD</span></td>
+                            <td>Database password</td>
+                            <td><code>***</code></td>
+                        </tr>
+                        <tr>
+                            <td><span class="env-var">DB_PORT</span></td>
+                            <td>Database port</td>
+                            <td><code>5432</code></td>
+                        </tr>
+                        <tr>
+                            <td><span class="env-var">TELEGRAM_BOT_TOKEN</span></td>
+                            <td>Telegram Bot API token</td>
+                            <td><code>8244407314:AAEvEWGNEDQ5...</code></td>
+                        </tr>
+                        <tr>
+                            <td><span class="env-var">TELEGRAM_CHAT_ID</span></td>
+                            <td>Telegram channel/group ID</td>
+                            <td><code>-1003789839646</code></td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- Deployment -->
+        <section>
+            <h2>Deployment Flow</h2>
+            <div class="card">
+                <div class="flow-diagram">
+                    <div class="flow-box primary">
+                        <div style="font-weight: 600;">Build</div>
+                        <div style="font-size: 0.85rem; color: #94a3b8;">sam build</div>
+                    </div>
+                    <span class="flow-arrow">→</span>
+                    <div class="flow-box">
+                        <div style="font-weight: 600;">Package</div>
+                        <div style="font-size: 0.85rem; color: #94a3b8;">Lambda Layer</div>
+                    </div>
+                    <span class="flow-arrow">→</span>
+                    <div class="flow-box">
+                        <div style="font-weight: 600;">Deploy</div>
+                        <div style="font-size: 0.85rem; color: #94a3b8;">sam deploy</div>
+                    </div>
+                    <span class="flow-arrow">→</span>
+                    <div class="flow-box">
+                        <div style="font-weight: 600;">Configure</div>
+                        <div style="font-size: 0.85rem; color: #94a3b8;">VPC + Env</div>
+                    </div>
+                    <span class="flow-arrow">→</span>
+                    <div class="flow-box primary">
+                        <div style="font-weight: 600;">Test</div>
+                        <div style="font-size: 0.85rem; color: #94a3b8;">Invoke</div>
+                    </div>
+                </div>
+
+                <h3 style="margin-top: 30px; margin-bottom: 15px; color: #f1f5f9;">Quick Start Checklist</h3>
+                <ul class="checklist">
+                    <li>Verify RDS is accessible from Lambda VPC</li>
+                    <li>Create/verify database tables exist</li>
+                    <li>Run <code>populate_thresholds.py</code> to insert alert thresholds</li>
+                    <li>Set environment variables (DB + Telegram)</li>
+                    <li>Deploy Lambda functions with SAM or manually</li>
+                    <li>Create CloudWatch Events schedules</li>
+                    <li>Test with manual Lambda invocation</li>
+                    <li>Verify Telegram alerts are received</li>
+                </ul>
+            </div>
+        </section>
+
+        <!-- File Structure -->
+        <section>
+            <h2>Project File Structure</h2>
+            <div class="card">
+                <div class="file-tree">
+<span class="folder">monitoring/</span>
+├── <span class="folder">config/</span>
+│   └── <span class="file">settings.py</span>          <span class="comment"># DB config, alert settings</span>
+├── <span class="folder">core/</span>
+│   ├── <span class="file">db.py</span>                 <span class="comment"># Database connection, queries</span>
+│   ├── <span class="file">registry.py</span>           <span class="comment"># Asset config loader</span>
+│   ├── <span class="file">alerts.py</span>             <span class="comment"># Threshold checking, logging</span>
+│   └── <span class="file">dispatcher.py</span>         <span class="comment"># Routes to fetchers by frequency</span>
+├── <span class="folder">fetchers/</span>
+│   ├── <span class="file">oracle.py</span>             <span class="comment"># Oracle freshness metrics</span>
+│   ├── <span class="file">reserve.py</span>            <span class="comment"># PoR/backing ratio</span>
+│   ├── <span class="file">liquidity.py</span>          <span class="comment"># Slippage, TVL</span>
+│   ├── <span class="file">lending.py</span>            <span class="comment"># CLR, RLR, utilization</span>
+│   ├── <span class="file">distribution.py</span>       <span class="comment"># HHI, Gini, concentration</span>
+│   └── <span class="file">market.py</span>             <span class="comment"># Volatility, VaR, peg deviation</span>
+├── <span class="folder">handlers/</span>
+│   ├── <span class="file">critical_handler.py</span>   <span class="comment"># 5 min frequency</span>
+│   ├── <span class="file">high_handler.py</span>       <span class="comment"># 30 min frequency</span>
+│   ├── <span class="file">medium_handler.py</span>     <span class="comment"># 6 hour frequency</span>
+│   ├── <span class="file">daily_handler.py</span>      <span class="comment"># 24 hour frequency</span>
+│   └── <span class="file">notification_handler.py</span>
+├── <span class="folder">notifications/</span>
+│   ├── <span class="file">telegram.py</span>           <span class="comment"># Telegram Bot API</span>
+│   └── <span class="file">slack.py</span>              <span class="comment"># Slack webhooks (optional)</span>
+├── <span class="folder">scripts/</span>
+│   ├── <span class="file">populate_thresholds.py</span>  <span class="comment"># Insert alert thresholds</span>
+│   ├── <span class="file">validate_configs.py</span>     <span class="comment"># Validate asset configs</span>
+│   └── <span class="file">test_all_fetchers.py</span>    <span class="comment"># Test fetchers against all configs</span>
+└── <span class="folder">deploy/</span>
+    ├── <span class="file">template.yaml</span>         <span class="comment"># SAM/CloudFormation template</span>
+    ├── <span class="file">samconfig.toml</span>        <span class="comment"># SAM CLI config</span>
+    ├── <span class="file">requirements.txt</span>      <span class="comment"># Lambda dependencies</span>
+    └── <span class="file">deploy.sh</span>             <span class="comment"># Deployment script</span>
+                </div>
+            </div>
+        </section>
+
+        <!-- Troubleshooting -->
+        <section>
+            <h2>Common Issues & Solutions</h2>
+            <div class="card">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Issue</th>
+                            <th>Cause</th>
+                            <th>Solution</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><code>Connection timed out</code></td>
+                            <td>Lambda can't reach RDS</td>
+                            <td>Check VPC config, security groups</td>
+                        </tr>
+                        <tr>
+                            <td><code>No module named 'psycopg2'</code></td>
+                            <td>Missing Layer</td>
+                            <td>Add Lambda Layer with dependencies</td>
+                        </tr>
+                        <tr>
+                            <td><code>Telegram send failed</code></td>
+                            <td>Invalid token/chat ID</td>
+                            <td>Verify env vars, bot permissions</td>
+                        </tr>
+                        <tr>
+                            <td><code>No metrics collected</code></td>
+                            <td>API rate limits</td>
+                            <td>Check CloudWatch logs for specific errors</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <footer>
+            <p>Risk Monitoring System Documentation</p>
+            <p style="margin-top: 10px;">For questions about monitoring logic or metrics, contact the Risk team.<br>
+            For deployment/infrastructure issues, check CloudWatch logs first.</p>
+        </footer>
+    </div>
+</body>
+</html>
