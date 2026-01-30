@@ -59,12 +59,15 @@ def format_single_alert(alert: Dict) -> str:
     chain_info = f" ({alert['chain']})" if alert.get("chain") else ""
     metric_name = escape_markdown(alert.get('metric_name', 'Unknown'))
 
+    threshold = alert.get('threshold_value', 0)
+    threshold_str = f"{threshold:.2f}" if threshold % 1 else f"{int(threshold)}"
+
     message = f"""{emoji} *{severity.upper()} ALERT*
 
 *Asset:* {alert.get('asset_symbol', 'Unknown')}
 *Metric:* {metric_name}{chain_info}
 *Value:* {alert.get('value', 0):.4f}
-*Threshold:* {alert.get('operator', '')} {alert.get('threshold_value', 0)}"""
+*Threshold:* {alert.get('operator', '')} {threshold_str}"""
 
     return message
 
@@ -111,10 +114,12 @@ def format_batch_digest(alerts: List[Dict]) -> str:
         emoji = SEVERITY_EMOJIS.get(severity, "🔔")
         chain_info = f" ({alert['chain']})" if alert.get("chain") else ""
         metric_name = escape_markdown(alert.get('metric_name', 'Unknown'))
+        threshold = alert.get('threshold_value', 0)
+        threshold_str = f"{threshold:.2f}" if threshold % 1 else f"{int(threshold)}"
 
         message += f"""
 {emoji} *{alert.get('asset_symbol')}* - {metric_name}{chain_info}
-   Value: {alert.get('value', 0):.4f} (threshold: {alert.get('operator')} {alert.get('threshold_value')})
+   Value: {alert.get('value', 0):.4f} (threshold: {alert.get('operator')} {threshold_str})
 """
 
     if len(alerts) > 10:
