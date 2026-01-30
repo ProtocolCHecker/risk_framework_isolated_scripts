@@ -10,6 +10,23 @@ This system monitors DeFi asset risk metrics on a scheduled basis and sends aler
 - Triggers alerts based on configurable thresholds
 - Sends notifications via Telegram
 
+**Tested Assets:** WBTC, wstETH, cbBTC, RLP, cUSD
+
+---
+
+## Verification Status
+
+| Component | Status | Notes |
+|-----------|--------|-------|
+| Fetchers (6) | ✅ Tested | oracle, reserve, liquidity, lending, distribution, market |
+| Database | ✅ Tested | Connection, inserts, queries all working |
+| Alerts | ✅ Tested | Threshold checking and logging verified |
+| Dispatcher | ✅ Tested | All 4 frequencies collecting metrics |
+| Registry | ✅ Tested | 5 assets registered and retrieved |
+| Telegram | ✅ Tested | Alerts sent successfully |
+| Handlers | ⚠️ Partial | Logic tested, Lambda deploy pending |
+| Slack | ⏭️ Skipped | No admin access |
+
 ---
 
 ## Architecture
@@ -82,22 +99,34 @@ handlers/notification_handler.handler
 
 All tables are in the `morpho` schema with `rm_` prefix.
 
-### rm_metrics
+### Tables Overview
+
+| Table | Purpose |
+|-------|---------|
+| `rm_metrics_history` | All collected metrics (time series) |
+| `rm_latest_metrics` | Most recent value per metric |
+| `rm_alerts_log` | Triggered alerts history |
+| `rm_alert_thresholds` | Configurable thresholds |
+| `rm_asset_registry` | Asset configurations |
+| `rm_asset_health` | Asset health scores |
+| `rm_active_alerts` | Currently active (unresolved) alerts |
+
+### rm_metrics_history
 Stores all collected metrics.
 
 ```sql
-CREATE TABLE morpho.rm_metrics (
+CREATE TABLE morpho.rm_metrics_history (
     id SERIAL PRIMARY KEY,
     asset_symbol VARCHAR(20) NOT NULL,
     metric_name VARCHAR(50) NOT NULL,
     value NUMERIC NOT NULL,
     chain VARCHAR(20),
     metadata JSONB,
-    timestamp TIMESTAMP DEFAULT NOW()
+    recorded_at TIMESTAMP DEFAULT NOW()
 );
 
-CREATE INDEX idx_rm_metrics_asset_time ON morpho.rm_metrics(asset_symbol, timestamp DESC);
-CREATE INDEX idx_rm_metrics_name_time ON morpho.rm_metrics(metric_name, timestamp DESC);
+CREATE INDEX idx_rm_metrics_asset_time ON morpho.rm_metrics_history(asset_symbol, recorded_at DESC);
+CREATE INDEX idx_rm_metrics_name_time ON morpho.rm_metrics_history(metric_name, recorded_at DESC);
 ```
 
 ### rm_alerts_log
@@ -112,11 +141,11 @@ CREATE TABLE morpho.rm_alerts_log (
     threshold_value NUMERIC NOT NULL,
     operator VARCHAR(5) NOT NULL,
     severity VARCHAR(20) NOT NULL,
+    message TEXT,
     chain VARCHAR(20),
     notified BOOLEAN DEFAULT FALSE,
-    notified_at TIMESTAMP,
-    notified_channel VARCHAR(20),
-    created_at TIMESTAMP DEFAULT NOW()
+    notification_channel VARCHAR(20),
+    triggered_at TIMESTAMP DEFAULT NOW()
 );
 
 CREATE INDEX idx_rm_alerts_notified ON morpho.rm_alerts_log(notified, severity);
@@ -139,6 +168,24 @@ CREATE TABLE morpho.rm_alert_thresholds (
 ```
 
 **Pre-populated thresholds:** 40 thresholds based on scoring framework (14 critical, 15 warning, 11 info).
+
+---
+
+## Supported Verification Types
+
+### Reserve (Proof of Reserve)
+| Type | Description | Example Asset |
+|------|-------------|---------------|
+| `chainlink_por` | Chainlink PoR feeds | WBTC, cbBTC |
+| `liquid_staking` | LST backing ratio | wstETH, rETH |
+| `fractional` | Fractional reserve | cUSD |
+| `nav_based` | NAV oracle-based | - |
+| `apostro_scraper` | Resolv dashboard + NAV oracle | RLP |
+
+### Config Format Compatibility
+Fetchers support both formats:
+- **New format**: Lists (`token_addresses`, `dex_pools`, `lending_configs`, `price_feeds`)
+- **Legacy format**: Dicts (`chains`, `oracles`, `lending_markets`)
 
 ---
 
@@ -290,7 +337,8 @@ monitoring/
 │   └── slack.py              # Slack webhooks (optional)
 ├── scripts/
 │   ├── populate_thresholds.py  # Insert alert thresholds
-│   └── validate_configs.py     # Validate asset configs
+│   ├── validate_configs.py     # Validate asset configs
+│   └── test_all_fetchers.py    # Test fetchers against all configs
 └── deploy/
     ├── template.yaml         # SAM/CloudFormation template
     ├── samconfig.toml        # SAM CLI config
